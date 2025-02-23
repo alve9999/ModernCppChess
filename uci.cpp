@@ -6,7 +6,7 @@
 #include <stdlib.h> 
 #include "movegen.hpp"
 #include "move.hpp"
-
+/*
 bool white = false;
 Board* brd = new Board(loadFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
 
@@ -72,3 +72,4 @@ void uciRunGame(){
         }
     }
 }
+*/

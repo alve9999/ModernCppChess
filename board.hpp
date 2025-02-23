@@ -2,6 +2,8 @@
 #include <iostream>
 #include <stdint.h>
 #include <string>
+#include "constants.hpp"
+
 #define _fast inline constexpr
 
 inline constexpr uint64_t _blsr_u64(uint64_t x) noexcept { return x & (x - 1); }
@@ -18,16 +20,77 @@ inline void printBitboard(uint64_t bitboard) {
     std::cout << std::endl;
 }
 
-struct BoardState {
-    const bool IsWhite, EP, WLC, WRC, BLC, BRC;
-    constexpr BoardState(bool IsWhite, bool EP, bool WLC, bool WRC, bool BLC,
-                         bool BRC)
-        : IsWhite(IsWhite), EP(EP), WLC(WLC), WRC(WRC), BLC(BLC), BRC(BRC) {}
-    constexpr BoardState()
-        : IsWhite(0), EP(0), WLC(0), WRC(0), BLC(0), BRC(0) {}
+enum class BoardPiece { Pawn, Knight, Bishop, Rook, Queen, King };
+
+struct Move {
+    uint8_t from;
+    uint8_t to;
+    BoardPiece piece;
+    uint8_t special;
+    std::string toAlgebraic() const {
+        char file_from = 'h' - (this->from % 8);
+        char rank_from = '1' + (this->from / 8);
+        char file_to = 'h' - (this->to % 8);
+        char rank_to = '1' + (this->to / 8);
+        return std::string{file_from, rank_from, file_to, rank_to};
+    }
 };
 
-enum class BoardPiece { Pawn, Knight, Bishop, Rook, Queen, King };
+struct BoardState {
+    const bool IsWhite, EP, WLC, WRC, BLC, BRC;
+    const int ep;
+    constexpr BoardState(bool IsWhite, bool EP, bool WLC, bool WRC, bool BLC,
+                         bool BRC,int ep)
+        : IsWhite(IsWhite), EP(EP), WLC(WLC), WRC(WRC), BLC(BLC), BRC(BRC), ep(ep) {}
+    constexpr BoardState()
+        : IsWhite(0), EP(0), WLC(0), WRC(0), BLC(0), BRC(0), ep(0) {}
+
+    constexpr BoardState normal(int ep) const noexcept
+    {
+        return BoardState(!IsWhite, false, WLC, WRC, BLC, BRC,0);
+    }
+
+    constexpr BoardState king(int ep) const noexcept
+    {
+        if (IsWhite)
+        {
+            return BoardState(!IsWhite, false, false, false, BLC, BRC,0);
+        }
+        else
+        {
+            return BoardState(!IsWhite, false, WLC, WRC, false, false,0);
+        }
+    }
+
+    constexpr BoardState pawn(int ep) const noexcept
+    {
+        return BoardState(!IsWhite, true, WLC, WRC, BLC, BRC,ep);
+    }
+
+    constexpr BoardState RookMove_Left(int ep) const noexcept
+    {
+        if (IsWhite) {
+            return BoardState(!IsWhite, false, false, WRC, BLC, BRC,0);
+        }
+        else {
+            return BoardState(!IsWhite, false, WLC, WRC, false, BRC,0);
+        }
+    }
+
+    constexpr BoardState RookMove_Right(int ep) const noexcept
+    {
+        if (IsWhite) {
+            return BoardState(!IsWhite, false, WLC, false, BLC, BRC,0);
+        }
+        else {
+            return BoardState(!IsWhite, false, WLC, WRC, BLC, false,0);
+        }
+    }
+
+
+};
+
+
 #include <math.h>
 struct Board {
     const uint64_t BPawn;
@@ -46,22 +109,205 @@ struct Board {
     const uint64_t Black;
     const uint64_t White;
     const uint64_t Occ;
-    const int EPSquare;
-    const BoardState state;
 
     constexpr Board(uint64_t bp, uint64_t bn, uint64_t bb, uint64_t br,
                     uint64_t bq, uint64_t bk, uint64_t wp, uint64_t wn,
-                    uint64_t wb, uint64_t wr, uint64_t wq, uint64_t wk, int ep,
-                    BoardState state) noexcept
+                    uint64_t wb, uint64_t wr, uint64_t wq, uint64_t wk) noexcept
         : BPawn(bp), BKnight(bn), BBishop(bb), BRook(br), BQueen(bq), BKing(bk),
           WPawn(wp), WKnight(wn), WBishop(wb), WRook(wr), WQueen(wq), WKing(wk),
           Black(bp | bn | bb | br | bq | bk),
-          White(wp | wn | wb | wr | wq | wk), Occ(Black | White), EPSquare(ep),
-          state(state) {}
+          White(wp | wn | wb | wr | wq | wk), Occ(Black | White){}
     constexpr Board() noexcept
         : BPawn(0), BKnight(0), BBishop(0), BRook(0), BQueen(0), BKing(0),
           WPawn(0), WKnight(0), WBishop(0), WRook(0), WQueen(0), WKing(0),
-          Black(0), White(0), Occ(0), EPSquare(0), state(BoardState()) {}
+          Black(0), White(0), Occ(0) {}
+
+    template <BoardPiece piece,bool IsWhite,bool WLC, bool WRC, bool BLC, bool BRC>
+    _fast Board move(const Move &move) const noexcept{
+        const uint64_t bp = BPawn;
+        const uint64_t bn = BKnight;
+        const uint64_t bb = BBishop;
+        const uint64_t br = BRook;
+        const uint64_t bq = BQueen;
+        const uint64_t bk = BKing;
+        const uint64_t wp = WPawn;
+        const uint64_t wn = WKnight;
+        const uint64_t wb = WBishop;
+        const uint64_t wr = WRook;
+        const uint64_t wq = WQueen;
+        const uint64_t wk = WKing;
+        const uint64_t mov = 1ULL << move.to || 1ULL << move.from;
+        if constexpr (IsWhite) {
+            if constexpr (BoardPiece::Pawn == piece)    return Board(bp, bn, bb, br, bq, bk, wp ^ mov, wn, wb, wr, wq, wk);
+            if constexpr (BoardPiece::Knight == piece)  return Board(bp, bn, bb, br, bq, bk, wp, wn ^ mov, wb, wr, wq, wk);
+            if constexpr (BoardPiece::Bishop == piece)  return Board(bp, bn, bb, br, bq, bk, wp, wn, wb ^ mov, wr, wq, wk);
+            if constexpr (BoardPiece::Rook == piece)    return Board(bp, bn, bb, br, bq, bk, wp, wn, wb, wr ^ mov, wq, wk);
+            if constexpr (BoardPiece::Queen == piece)   return Board(bp, bn, bb, br, bq, bk, wp, wn, wb, wr, wq ^ mov, wk);
+            if constexpr (BoardPiece::King == piece)    return Board(bp, bn, bb, br, bq, bk, wp, wn, wb, wr, wq, wk ^ mov);
+        }
+        else {
+            if constexpr (BoardPiece::Pawn == piece)    return Board(bp ^ mov, bn, bb, br, bq, bk, wp, wn, wb, wr, wq, wk);
+            if constexpr (BoardPiece::Knight == piece)  return Board(bp, bn ^ mov, bb, br, bq, bk, wp, wn, wb, wr, wq, wk);
+            if constexpr (BoardPiece::Bishop == piece)  return Board(bp, bn, bb ^ mov, br, bq, bk, wp, wn, wb, wr, wq, wk);
+            if constexpr (BoardPiece::Rook == piece)    return Board(bp, bn, bb, br ^ mov, bq, bk, wp, wn, wb, wr, wq, wk);
+            if constexpr (BoardPiece::Queen == piece)   return Board(bp, bn, bb, br, bq ^ mov, bk, wp, wn, wb, wr, wq, wk);
+            if constexpr (BoardPiece::King == piece)    return Board(bp, bn, bb, br, bq, bk ^ mov, wp, wn, wb, wr, wq, wk);
+        }
+
+    }
+    template <BoardPiece piece,bool IsWhite,bool WLC, bool WRC, bool BLC, bool BRC>
+    _fast Board capture(const Move &move) const noexcept{
+        const uint64_t bp = BPawn;
+        const uint64_t bn = BKnight;
+        const uint64_t bb = BBishop;
+        const uint64_t br = BRook;
+        const uint64_t bq = BQueen;
+        const uint64_t bk = BKing;
+        const uint64_t wp = WPawn;
+        const uint64_t wn = WKnight;
+        const uint64_t wb = WBishop;
+        const uint64_t wr = WRook;
+        const uint64_t wq = WQueen;
+        const uint64_t wk = WKing;
+        const uint64_t rem = 1ULL << move.to;
+        const uint64_t mov = 1ULL << move.to || 1ULL << move.from;
+        if constexpr (IsWhite) {
+            if constexpr (BoardPiece::Pawn == piece)    return Board(bp & rem, bn & rem, bb & rem, br & rem, bq & rem, bk, wp ^ mov, wn, wb, wr, wq, wk);
+            if constexpr (BoardPiece::Knight == piece)  return Board(bp & rem, bn & rem, bb & rem, br & rem, bq & rem, bk, wp, wn ^ mov, wb, wr, wq, wk);
+            if constexpr (BoardPiece::Bishop == piece)  return Board(bp & rem, bn & rem, bb & rem, br & rem, bq & rem, bk, wp, wn, wb ^ mov, wr, wq, wk);
+            if constexpr (BoardPiece::Rook == piece)    return Board(bp & rem, bn & rem, bb & rem, br & rem, bq & rem, bk, wp, wn, wb, wr ^ mov, wq, wk);
+            if constexpr (BoardPiece::Queen == piece)   return Board(bp & rem, bn & rem, bb & rem, br & rem, bq & rem, bk, wp, wn, wb, wr, wq ^ mov, wk);
+            if constexpr (BoardPiece::King == piece)    return Board(bp & rem, bn & rem, bb & rem, br & rem, bq & rem, bk, wp, wn, wb, wr, wq, wk ^ mov);
+        }
+        else {
+            if constexpr (BoardPiece::Pawn == piece)    return Board(bp ^ mov, bn, bb, br, bq, bk, wp & rem, wn & rem, wb & rem, wr & rem, wq & rem, wk);
+            if constexpr (BoardPiece::Knight == piece)  return Board(bp, bn ^ mov, bb, br, bq, bk, wp & rem, wn & rem, wb & rem, wr & rem, wq & rem, wk);
+            if constexpr (BoardPiece::Bishop == piece)  return Board(bp, bn, bb ^ mov, br, bq, bk, wp & rem, wn & rem, wb & rem, wr & rem, wq & rem, wk);
+            if constexpr (BoardPiece::Rook == piece)    return Board(bp, bn, bb, br ^ mov, bq, bk, wp & rem, wn & rem, wb & rem, wr & rem, wq & rem, wk);
+            if constexpr (BoardPiece::Queen == piece)   return Board(bp, bn, bb, br, bq ^ mov, bk, wp & rem, wn & rem, wb & rem, wr & rem, wq & rem, wk);
+            if constexpr (BoardPiece::King == piece)    return Board(bp, bn, bb, br, bq, bk ^ mov, wp & rem, wn & rem, wb & rem, wr & rem, wq & rem, wk);
+        }
+    }
+
+    template <BoardPiece piece,bool IsWhite,bool WLC, bool WRC, bool BLC, bool BRC>
+    _fast Board EP(const Move& move) const noexcept
+    {
+        const uint64_t bp = BPawn;
+        const uint64_t bn = BKnight;
+        const uint64_t bb = BBishop;
+        const uint64_t br = BRook;
+        const uint64_t bq = BQueen;
+        const uint64_t bk = BKing;
+        const uint64_t wp = WPawn;
+        const uint64_t wn = WKnight;
+        const uint64_t wb = WBishop;
+        const uint64_t wr = WRook;
+        const uint64_t wq = WQueen;
+        const uint64_t wk = WKing;
+        const uint64_t from = 1ULL << move.from;
+        const uint64_t to = 1ULL << move.to;
+        const uint64_t mov = from | to;
+        if constexpr (IsWhite) {
+            const uint64_t remove = ~(1ULL << (move.to - 8));
+            return Board(bp & remove, bn & remove, bb & remove, br & remove, bq & remove, bk & remove, wp ^ mov, wn, wb, wr, wq, wk);
+        } else {
+            const uint64_t remove = ~(1ULL << (move.to + 8));
+            return Board(bp ^ mov, bn, bb, br, bq, bk, wp & remove, wn & remove, wb & remove, wr & remove, wq & remove, wk & remove);
+        }
+    }
+
+    template <BoardPiece piece,bool IsWhite,bool WLC, bool WRC, bool BLC, bool BRC>
+    _fast Board promote(const Move& move) const noexcept
+    {
+        const uint64_t bp = BPawn;
+        const uint64_t bn = BKnight;
+        const uint64_t bb = BBishop;
+        const uint64_t br = BRook;
+        const uint64_t bq = BQueen;
+        const uint64_t bk = BKing;
+        const uint64_t wp = WPawn;
+        const uint64_t wn = WKnight;
+        const uint64_t wb = WBishop;
+        const uint64_t wr = WRook;
+        const uint64_t wq = WQueen;
+        const uint64_t wk = WKing;
+        const uint64_t from = 1ULL << move.from;
+        const uint64_t to = 1ULL << move.to;
+        if constexpr (IsWhite){
+            if constexpr (piece == BoardPiece::Queen)  return Board(bp, bn, bb, br, bq, bk, wp ^ from, wn, wb, wr, wq ^ to, wk);
+            if constexpr (piece == BoardPiece::Bishop) return Board(bp, bn, bb, br, bq, bk, wp ^ from, wn, wb ^ to, wr, wq, wk);
+            if constexpr (piece == BoardPiece::Rook)   return Board(bp, bn, bb, br, bq, bk, wp ^ from, wn, wb ,wr ^ to, wq, wk);
+            if constexpr (piece == BoardPiece::Knight) return Board(bp, bn, bb, br, bq, bk, wp ^ from, wn ^ to, wb, wr, wq, wk);
+        }
+        else {
+            if constexpr (piece == BoardPiece::Queen)  return Board(bp ^ from, bn, bb, br, bq ^ to, bk, wp, wn, wb, wr, wq, wk);
+            if constexpr (piece == BoardPiece::Bishop) return Board(bp ^ from, bn, bb ^ to, br, bq, bk, wp, wn, wb, wr, wq, wk);
+            if constexpr (piece == BoardPiece::Rook)   return Board(bp ^ from, bn, bb, br ^ to, bq, bk, wp, wn, wb, wr, wq, wk);
+            if constexpr (piece == BoardPiece::Knight) return Board(bp ^ from, bn ^ to, bb, br, bq, bk, wp, wn, wb, wr, wq, wk);
+        }
+
+    }
+    template <BoardPiece piece,bool IsWhite,bool WLC, bool WRC, bool BLC, bool BRC>
+    _fast Board promoteCapture(const Move& move) const noexcept
+    {
+        const uint64_t bp = BPawn;
+        const uint64_t bn = BKnight;
+        const uint64_t bb = BBishop;
+        const uint64_t br = BRook;
+        const uint64_t bq = BQueen;
+        const uint64_t bk = BKing;
+        const uint64_t wp = WPawn;
+        const uint64_t wn = WKnight;
+        const uint64_t wb = WBishop;
+        const uint64_t wr = WRook;
+        const uint64_t wq = WQueen;
+        const uint64_t wk = WKing;
+        const uint64_t from = 1ULL << move.from;
+        const uint64_t to = 1ULL << move.to;
+        const uint64_t rem = 1ULL << move.to;
+        if constexpr (IsWhite){
+            if constexpr (piece == BoardPiece::Queen)  return Board(bp & rem, bn & rem, bb & rem, br & rem, bq & rem, bk, wp ^ from, wn, wb, wr, wq ^ to, wk);
+            if constexpr (piece == BoardPiece::Bishop) return Board(bp & rem, bn & rem, bb & rem, br & rem, bq & rem, bk, wp ^ from, wn, wb ^ to, wr, wq, wk);
+            if constexpr (piece == BoardPiece::Rook)   return Board(bp & rem, bn & rem, bb & rem, br & rem, bq & rem, bk, wp ^ from, wn, wb ,wr ^ to, wq, wk);
+            if constexpr (piece == BoardPiece::Knight) return Board(bp & rem, bn & rem, bb & rem, br & rem, bq & rem, bk, wp ^ from, wn ^ to, wb, wr, wq, wk);
+        }
+        else {
+            if constexpr (piece == BoardPiece::Queen)  return Board(bp ^ from, bn, bb, br, bq ^ to, bk, wp & rem, wn & rem, wb & rem, wr & rem, wq & rem, wk);
+            if constexpr (piece == BoardPiece::Bishop) return Board(bp ^ from, bn, bb ^ to, br, bq, bk, wp & rem, wn & rem, wb & rem, wr & rem, wq & rem, wk);
+            if constexpr (piece == BoardPiece::Rook)   return Board(bp ^ from, bn, bb, br ^ to, bq, bk, wp & rem, wn & rem, wb & rem, wr & rem, wq & rem, wk);
+            if constexpr (piece == BoardPiece::Knight) return Board(bp ^ from, bn ^ to, bb, br, bq, bk, wp & rem, wn & rem, wb & rem, wr & rem, wq & rem, wk);
+        }
+    }
+    template <BoardPiece piece,bool IsWhite,bool WLC, bool WRC, bool BLC, bool BRC>
+    _fast Board castle(const Move& move) const noexcept
+    {
+        const uint64_t bp = BPawn;
+        const uint64_t bn = BKnight;
+        const uint64_t bb = BBishop;
+        const uint64_t br = BRook;
+        const uint64_t bq = BQueen;
+        const uint64_t bk = BKing;
+        const uint64_t wp = WPawn;
+        const uint64_t wn = WKnight;
+        const uint64_t wb = WBishop;
+        const uint64_t wr = WRook;
+        const uint64_t wq = WQueen;
+        const uint64_t wk = WKing;
+
+        if constexpr (WLC){
+            return Board(bp, bn, bb, br, bq, bk, wp, wn, wb, wr ^ WRookLChange, wq, wk ^ WKingLChange);
+        }
+        if constexpr (WRC){
+            return Board(bp, bn, bb, br, bq, bk, wp, wn, wb, wr ^ WRookRChange, wq, wk ^ WKingRChange);
+        }
+        if constexpr (BLC){
+            return Board(bp, bn, bb, br ^ BRookLChange, bq, bk ^ BKingLChange, wp, wn, wb, wr, wq, wk);
+        }
+        if constexpr (BRC){
+            return Board(bp, bn, bb, br ^ BRookRChange, bq, bk ^ BKingRChange, wp, wn, wb, wr, wq, wk);
+        }
+    }
+
 };
 
 inline static uint64_t FenToBmp(std::string FEN, char p) {
@@ -146,13 +392,13 @@ inline BoardState parseBoardState(const std::string &FEN) {
     }
     int enPassantSquare = parseEnPassantSquare(FEN);
     bool EP = (enPassantSquare != -1);
-    return BoardState(IsWhite, EP, WLC, WRC, BLC, BRC);
+    int ep = parseEnPassantSquare(FEN);
+    return BoardState(IsWhite, EP, WLC, WRC, BLC, BRC,ep);
 }
 
-inline Board loadFen(std::string FEN) {
+inline Board loadFenBoard(std::string FEN) {
     return Board(FenToBmp(FEN, 'p'), FenToBmp(FEN, 'n'), FenToBmp(FEN, 'b'),
                  FenToBmp(FEN, 'r'), FenToBmp(FEN, 'q'), FenToBmp(FEN, 'k'),
                  FenToBmp(FEN, 'P'), FenToBmp(FEN, 'N'), FenToBmp(FEN, 'B'),
-                 FenToBmp(FEN, 'R'), FenToBmp(FEN, 'Q'), FenToBmp(FEN, 'K'),
-                 parseEnPassantSquare(FEN), parseBoardState(FEN));
+                 FenToBmp(FEN, 'R'), FenToBmp(FEN, 'Q'), FenToBmp(FEN, 'K'));
 }

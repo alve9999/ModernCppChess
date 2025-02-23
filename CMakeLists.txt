@@ -4,6 +4,7 @@ project(chess2000)
 
 set(CMAKE_CXX_STANDARD 23)
 
-add_executable(chess2000 main.cpp board.hpp check.hpp sliding.cpp pawns.hpp constants.hpp movegen.hpp move.hpp MoveList.hpp uci.cpp)
+add_executable(chess2000 main.cpp board.hpp check.hpp sliding.cpp pawns.hpp constants.hpp movegen.hpp move.hpp MoveList.hpp uci.cpp
+)
 
 
