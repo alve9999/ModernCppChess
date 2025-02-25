@@ -3,27 +3,19 @@
 #include "board.hpp"
 #include "check.hpp"
 #include "constants.hpp"
-#include "move.hpp"
 #include "pawns.hpp"
+#include "move.hpp"
 #include <cassert>
 #include <cstdint>
 #include <iostream>
 
-using StateMoveFunc = BoardState (BoardState::*)(int) const noexcept;
-using MakeMoveFunc = Board (Board::*)(const Move&) const noexcept;
+using MakeMoveFunc = void (*)(const Board&,int,int);
 
 
-inline void moveHandler(const MakeMoveFunc& move, const StateMoveFunc& state, const uint8_t from, const uint8_t to,
-                        const BoardPiece piece, const uint8_t special,
-                        MoveList& ml) noexcept {
-    ml.addMove(move,state,from, to, piece, special);
+inline void moveHandler(MakeMoveFunc move,MoveList& ml,int from,int to) noexcept {
+    ml.addMove(move,from,to);
 }
 
-inline void moveHandlerEp(const MakeMoveFunc& move, const StateMoveFunc& state, const uint8_t from, const uint8_t to,
-                        const BoardPiece piece, const uint8_t special,
-                        MoveList& ml, const int ep) noexcept {
-    ml.addMove(move,state,from, to, piece, special,ep);
-}
 
 template <bool IsWhite> _fast uint64_t enemyOrEmpty(const Board &brd) noexcept {
     if constexpr (IsWhite) {
@@ -32,11 +24,11 @@ template <bool IsWhite> _fast uint64_t enemyOrEmpty(const Board &brd) noexcept {
     return brd.White | ~brd.Occ;
 }
 
-template <bool IsWhite>
+template <class BoardState status,int depth>
 _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
                             uint64_t pinD, MoveList &ml) noexcept {
     uint64_t pinnedD, pinnedHV, notPinned;
-    if constexpr (IsWhite) {
+    if constexpr (status.IsWhite) {
         pinnedD = brd.WPawn & pinD;
         pinnedHV = brd.WPawn & pinHV;
         notPinned = brd.WPawn & ~(pinnedD | pinnedHV);
@@ -46,123 +38,107 @@ _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
         notPinned = brd.BPawn & ~(pinnedD | pinnedHV);
     }
     uint64_t forwardNotPinned =
-        (pawnForward<IsWhite>(notPinned, brd)) & chessMask;
+        (pawnForward<status.IsWhite>(notPinned, brd)) & chessMask;
     uint64_t fowardPinned =
-        (pawnForward<IsWhite>(pinnedHV, brd)) & chessMask & pinHV;
+        (pawnForward<status.IsWhite>(pinnedHV, brd)) & chessMask & pinHV;
     uint64_t forward = forwardNotPinned | fowardPinned;
     uint64_t promotions = promotion(forward);
     forward = forward & (~promotions);
     Bitloop(promotions) {
         const int to = __builtin_ctzll(promotions);
-        if constexpr (IsWhite) {
+        if constexpr (status.IsWhite) {
             const int from = to - 8;
-            moveHandler(&Board::template promote<BoardPiece::Queen,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 8, ml);
-            moveHandler(&Board::template promote<BoardPiece::Rook,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 9, ml);
-            moveHandler(&Board::template promote<BoardPiece::Knight,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 10, ml);
-            moveHandler(&Board::template promote<BoardPiece::Bishop,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 11, ml);
+            moveHandler(promote<status,depth>,ml,from,to);
         } else {
             const int from = to + 8;
-            moveHandler(&Board::template promote<BoardPiece::Queen,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 8, ml);
-            moveHandler(&Board::template promote<BoardPiece::Rook,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 9, ml);
-            moveHandler(&Board::template promote<BoardPiece::Knight,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 10, ml);
-            moveHandler(&Board::template promote<BoardPiece::Bishop,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 11, ml);
+            moveHandler(promote<status,depth>,ml,from,to);
         }
     }
     Bitloop(forward) {
         const int to = __builtin_ctzll(forward);
-        if constexpr (IsWhite) {
+        if constexpr (status.IsWhite) {
             const int from = to - 8;
-            moveHandler(&Board::template move<BoardPiece::Pawn,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 0, ml);
+            moveHandler(pawnMove<status,depth>,ml,from,to);
         } else {
             const int from = to + 8;
-            moveHandler(&Board::template move<BoardPiece::Pawn,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 0, ml);
+            moveHandler(pawnMove<status,depth>,ml,from,to);
         }
     }
     uint64_t doubleForwardNotPinned =
-        pawnDoubleForward<IsWhite>(notPinned, brd) & chessMask;
+        pawnDoubleForward<status.IsWhite>(notPinned, brd) & chessMask;
     uint64_t doubleForwardPinned =
-        pawnDoubleForward<IsWhite>(pinnedHV, brd) & chessMask & pinHV;
+        pawnDoubleForward<status.IsWhite>(pinnedHV, brd) & chessMask & pinHV;
     uint64_t doubleForward = doubleForwardNotPinned | doubleForwardPinned;
     Bitloop(doubleForward) {
         const int to = __builtin_ctzll(doubleForward);
-        if constexpr (IsWhite) {
+        if constexpr (status.IsWhite) {
             const int from = to - 16;
-            moveHandlerEp(&Board::template move<BoardPiece::Pawn,IsWhite,false,false,false,false>,&BoardState::pawn,from, to, BoardPiece::Pawn, 1, ml, to + 8);
+            moveHandler(pawnDoubleMove<status,depth>,ml,from,to);
         } else {
             const int from = to + 16;
-            moveHandlerEp(&Board::template move<BoardPiece::Pawn,IsWhite,false,false,false,false>,&BoardState::pawn,from, to, BoardPiece::Pawn, 1, ml, to - 8);
+            moveHandler(pawnDoubleMove<status,depth>,ml,from,to);
         }
     }
-    uint64_t leftNotPinned = pawnAttackLeft<IsWhite>(notPinned, brd);
-    uint64_t leftPinned = pawnAttackLeft<IsWhite>(pinnedD, brd);
+    uint64_t leftNotPinned = pawnAttackLeft<status.IsWhite>(notPinned, brd);
+    uint64_t leftPinned = pawnAttackLeft<status.IsWhite>(pinnedD, brd);
     uint64_t left = (leftNotPinned | (leftPinned & pinD)) & chessMask;
     promotions = promotion(left);
     left = left & ~promotions;
     Bitloop(promotions) {
         const int to = __builtin_ctzll(promotions);
-        if constexpr (IsWhite) {
+        if constexpr (status.IsWhite) {
             const int from = to - 7;
-            moveHandler(&Board::template promoteCapture<BoardPiece::Queen,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 12, ml);
-            moveHandler(&Board::template promoteCapture<BoardPiece::Rook,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 13, ml);
-            moveHandler(&Board::template promoteCapture<BoardPiece::Knight,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 14, ml);
-            moveHandler(&Board::template promoteCapture<BoardPiece::Bishop,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 15, ml);
+            moveHandler(promoteCapture<status,depth>,ml,from,to);
+
         } else {
             const int from = to + 9;
-            moveHandler(&Board::template promoteCapture<BoardPiece::Queen,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 12, ml);
-            moveHandler(&Board::template promoteCapture<BoardPiece::Rook,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 13, ml);
-            moveHandler(&Board::template promoteCapture<BoardPiece::Knight,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 14, ml);
-            moveHandler(&Board::template promoteCapture<BoardPiece::Bishop,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 15, ml);
+            moveHandler(promoteCapture<status,depth>,ml,from,to);
+
         }
     }
     Bitloop(left) {
         const int to = __builtin_ctzll(left);
-        if constexpr (IsWhite) {
+        if constexpr (status.IsWhite) {
             const int from = to - 7;
-            moveHandler(&Board::template capture<BoardPiece::Pawn,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 4, ml);
+            moveHandler(pawnCapture<status,depth>,ml,from,to);
         } else {
             const int from = to + 9;
-            moveHandler(&Board::template capture<BoardPiece::Pawn,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 4, ml);
+            moveHandler(pawnCapture<status,depth>,ml,from,to);
         }
     }
-    uint64_t rightNotPinned = pawnAttackRight<IsWhite>(notPinned, brd);
-    uint64_t rightPinned = pawnAttackRight<IsWhite>(pinnedD, brd);
+    uint64_t rightNotPinned = pawnAttackRight<status.IsWhite>(notPinned, brd);
+    uint64_t rightPinned = pawnAttackRight<status.IsWhite>(pinnedD, brd);
     uint64_t right = (rightNotPinned | (rightPinned & pinD)) & chessMask;
     promotions = promotion(right);
     right = right & ~promotions;
     Bitloop(promotions) {
         const int to = __builtin_ctzll(promotions);
-        if constexpr (IsWhite) {
+        if constexpr (status.IsWhite) {
             const int from = to - 9;
-            moveHandler(&Board::template promoteCapture<BoardPiece::Queen,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 12, ml);
-            moveHandler(&Board::template promoteCapture<BoardPiece::Rook,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 13, ml);
-            moveHandler(&Board::template promoteCapture<BoardPiece::Knight,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 14, ml);
-            moveHandler(&Board::template promoteCapture<BoardPiece::Bishop,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 15, ml);
+            moveHandler(promoteCapture<status,depth>,ml,from,to);
         } else {
             const int from = to + 7;
-            moveHandler(&Board::template promoteCapture<BoardPiece::Queen,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 12, ml);
-            moveHandler(&Board::template promoteCapture<BoardPiece::Rook,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 13, ml);
-            moveHandler(&Board::template promoteCapture<BoardPiece::Knight,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 14, ml);
-            moveHandler(&Board::template promoteCapture<BoardPiece::Bishop,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 15, ml);
+            moveHandler(promoteCapture<status,depth>,ml,from,to);
         }
     }
     Bitloop(right) {
         const int to = __builtin_ctzll(right);
-        if constexpr (IsWhite) {
+        if constexpr (status.IsWhite) {
             const int from = to - 9;
-            moveHandler(&Board::template capture<BoardPiece::Pawn,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 4, ml);
+            moveHandler(pawnCapture<status,depth>,ml,from,to);
         } else {
             const int from = to + 7;
-            moveHandler(&Board::template capture<BoardPiece::Pawn,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Pawn, 4, ml);
+            moveHandler(pawnCapture<status,depth>,ml,from,to);
         }
     }
 }
 
-template <bool IsWhite>
+template <class BoardState status,int depth>
 _fast static void knightMoves(const Board &brd, uint64_t chessMask,
                               uint64_t pinHV, uint64_t pinD,
                               MoveList &ml) noexcept {
     uint64_t knights;
-    if constexpr (IsWhite) {
+    if constexpr (status.IsWhite) {
         knights = brd.WKnight & ~(pinHV | pinD);
     } else {
         knights = brd.BKnight & ~(pinHV | pinD);
@@ -170,26 +146,26 @@ _fast static void knightMoves(const Board &brd, uint64_t chessMask,
     Bitloop(knights) {
         const int from = __builtin_ctzll(knights);
         uint64_t attacks =
-            knightMasks[from] & chessMask & enemyOrEmpty<IsWhite>(brd);
+            knightMasks[from] & chessMask & enemyOrEmpty<status.IsWhite>(brd);
         uint64_t captures = attacks & brd.Occ;
         attacks = attacks & ~brd.Occ;
         Bitloop(attacks) {
             const int to = __builtin_ctzll(attacks);
-            moveHandler(&Board::template move<BoardPiece::Knight,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Knight, 0, ml);
+            moveHandler(knightMove<status,depth>,ml,from,to);
         }
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
-            moveHandler(&Board::template capture<BoardPiece::Knight,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Knight, 4, ml);
+            moveHandler(knightCapture<status,depth>,ml,from,to);
         }
     }
 }
 
-template <bool IsWhite>
+template <class BoardState status,int depth>
 _fast static void bishopMoves(const Board &brd, uint64_t chessMask,
                               uint64_t pinHV, uint64_t pinD,
                               MoveList &ml) noexcept {
     uint64_t bishopsNotPinned, bishopsPinnedD;
-    if constexpr (IsWhite) {
+    if constexpr (status.IsWhite) {
         bishopsNotPinned = brd.WBishop & ~(pinHV | pinD);
         bishopsPinnedD = brd.WBishop & pinD;
     } else {
@@ -199,41 +175,41 @@ _fast static void bishopMoves(const Board &brd, uint64_t chessMask,
     Bitloop(bishopsNotPinned) {
         const int from = __builtin_ctzll(bishopsNotPinned);
         uint64_t attacks = getBmagic(from, brd.Occ);
-        attacks = attacks & chessMask & enemyOrEmpty<IsWhite>(brd);
+        attacks = attacks & chessMask & enemyOrEmpty<status.IsWhite>(brd);
         uint64_t captures = attacks & brd.Occ;
         attacks = attacks & ~brd.Occ;
         Bitloop(attacks) {
             const int to = __builtin_ctzll(attacks);
-            moveHandler(&Board::template move<BoardPiece::Bishop,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Bishop, 0, ml);
+            moveHandler(bishopMove<status,depth>,ml,from,to);
         }
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
-            moveHandler(&Board::template capture<BoardPiece::Bishop,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Bishop, 4, ml);
+            moveHandler(bishopCapture<status,depth>,ml,from,to);
         }
     }
     Bitloop(bishopsPinnedD) {
         const int from = __builtin_ctzll(bishopsPinnedD);
         uint64_t attacks = getBmagic(from, brd.Occ);
-        attacks = attacks & chessMask & pinD & enemyOrEmpty<IsWhite>(brd);
+        attacks = attacks & chessMask & pinD & enemyOrEmpty<status.IsWhite>(brd);
         uint64_t captures = attacks & brd.Occ;
         attacks = attacks & ~brd.Occ;
         Bitloop(attacks) {
             const int to = __builtin_ctzll(attacks);
-            moveHandler(&Board::template move<BoardPiece::Bishop,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Bishop, 0, ml);
+            moveHandler(bishopMove<status,depth>,ml,from,to);
         }
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
-            moveHandler(&Board::template capture<BoardPiece::Bishop,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Bishop, 4, ml);
+            moveHandler(bishopCapture<status,depth>,ml,from,to);
         }
     }
 }
 
-template <bool IsWhite>
+template <class BoardState status,int depth>
 _fast static void queenMoves(const Board &brd, uint64_t chessMask,
                              uint64_t pinHV, uint64_t pinD,
                              MoveList &ml) noexcept {
     uint64_t queenNotPinned, queenPinnedD, queenPinnedHV;
-    if constexpr (IsWhite) {
+    if constexpr (status.IsWhite) {
         queenNotPinned = brd.WQueen & ~(pinHV | pinD);
         queenPinnedD = brd.WQueen & pinD;
         queenPinnedHV = brd.WQueen & pinHV;
@@ -245,121 +221,56 @@ _fast static void queenMoves(const Board &brd, uint64_t chessMask,
     Bitloop(queenNotPinned) {
         const int from = __builtin_ctzll(queenNotPinned);
         uint64_t attacks = getQmagic(from, brd.Occ);
-        attacks = attacks & chessMask & enemyOrEmpty<IsWhite>(brd);
+        attacks = attacks & chessMask & enemyOrEmpty<status.IsWhite>(brd);
         uint64_t captures = attacks & brd.Occ;
         attacks = attacks & ~brd.Occ;
         Bitloop(attacks) {
             const int to = __builtin_ctzll(attacks);
-            moveHandler(&Board::template move<BoardPiece::Queen,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Queen, 0, ml);
+            moveHandler(queenMove<status,depth>,ml,from,to);
         }
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
-            moveHandler(&Board::template capture<BoardPiece::Queen,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Queen, 4, ml);
+            moveHandler(queenCapture<status,depth>,ml,from,to);
         }
     }
     Bitloop(queenPinnedD) {
         const int from = __builtin_ctzll(queenPinnedD);
         uint64_t attacks = getQmagic(from, brd.Occ);
-        attacks = attacks & chessMask & pinD & enemyOrEmpty<IsWhite>(brd);
+        attacks = attacks & chessMask & pinD & enemyOrEmpty<status.IsWhite>(brd);
         uint64_t captures = attacks & brd.Occ;
         attacks = attacks & ~brd.Occ;
         Bitloop(attacks) {
             const int to = __builtin_ctzll(attacks);
-            moveHandler(&Board::template move<BoardPiece::Queen,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Queen, 0, ml);
+            moveHandler(queenMove<status,depth>,ml,from,to);
         }
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
-            moveHandler(&Board::template capture<BoardPiece::Queen,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Queen, 4, ml);
+            moveHandler(queenCapture<status,depth>,ml,from,to);
         }
     }
     Bitloop(queenPinnedHV) {
         const int from = __builtin_ctzll(queenPinnedHV);
         uint64_t attacks = getQmagic(from, brd.Occ);
-        attacks = attacks & chessMask & pinHV & enemyOrEmpty<IsWhite>(brd);
+        attacks = attacks & chessMask & pinHV & enemyOrEmpty<status.IsWhite>(brd);
         uint64_t captures = attacks & brd.Occ;
         attacks = attacks & ~brd.Occ;
         Bitloop(attacks) {
             const int to = __builtin_ctzll(attacks);
-            moveHandler(&Board::template move<BoardPiece::Queen,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Queen, 0, ml);
+            moveHandler(queenMove<status,depth>,ml,from,to);
         }
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
-            moveHandler(&Board::template capture<BoardPiece::Queen,IsWhite,false,false,false,false>,&BoardState::normal,from, to, BoardPiece::Queen, 4, ml);
+            moveHandler(queenCapture<status,depth>,ml,from,to);
         }
     }
 }
 
-template <bool IsWhite, bool WLC, bool WRC, bool BLC, bool BRC>
-_fast void handleRookMove(int from, int to, MoveList& ml) {
-    if constexpr (IsWhite) {
-        if constexpr (WLC) {
-            if (from == 0) {
-                moveHandler(&Board::template move<BoardPiece::Rook,IsWhite,false,false,false,false>, &BoardState::RookMove_Left, from, to, BoardPiece::Rook, 0, ml);
-            }
-            return;
-        }
-        if constexpr (WRC) {
-            if (from == 7) {
-                moveHandler(&Board::template move<BoardPiece::Rook,IsWhite,false,false,false,false>, &BoardState::RookMove_Right, from, to, BoardPiece::Rook, 0, ml);
-            }
-            return;
-        }
-        moveHandler(&Board::template move<BoardPiece::Rook,IsWhite,false,false,false,false>, &BoardState::RookMove_Right, from, to, BoardPiece::Rook, 0, ml);
-    } else {
-        if constexpr (BLC) {
-            if (from == 56) {
-                moveHandler(&Board::template move<BoardPiece::Rook,IsWhite,false,false,false,false>, &BoardState::RookMove_Left, from, to, BoardPiece::Rook, 0, ml);
-                return;
-            }
-        }
-        if constexpr (BRC) {
-            if (from == 63) {
-                moveHandler(&Board::template move<BoardPiece::Rook,IsWhite,false,false,false,false>, &BoardState::RookMove_Right, from, to, BoardPiece::Rook, 0, ml);
-                return;
-            }
-        }
-        moveHandler(&Board::template move<BoardPiece::Rook,IsWhite,false,false,false,false>, &BoardState::normal, from, to, BoardPiece::Rook, 0, ml);
-    }
-}
-template <bool IsWhite, bool WLC, bool WRC, bool BLC, bool BRC>
-_fast void handleCaptureRookMove(int from, int to, MoveList& ml) {
-    if constexpr (IsWhite) {
-        if constexpr (WLC) {
-            if (from == 0) {
-                moveHandler(&Board::template capture<BoardPiece::Rook,IsWhite,false,false,false,false>, &BoardState::RookMove_Left, from, to, BoardPiece::Rook, 4, ml);
-            }
-            return;
-        }
-        if constexpr (WRC) {
-            if (from == 7) {
-                moveHandler(&Board::template capture<BoardPiece::Rook,IsWhite,false,false,false,false>, &BoardState::RookMove_Right, from, to, BoardPiece::Rook, 4, ml);
-            }
-            return;
-        }
-        moveHandler(&Board::template capture<BoardPiece::Rook,IsWhite,false,false,false,false>, &BoardState::RookMove_Right, from, to, BoardPiece::Rook, 4, ml);
-    } else {
-        if constexpr (BLC) {
-            if (from == 56) {
-                moveHandler(&Board::template capture<BoardPiece::Rook,IsWhite,false,false,false,false>, &BoardState::RookMove_Left, from, to, BoardPiece::Rook, 4, ml);
-                return;
-            }
-        }
-        if constexpr (BRC) {
-            if (from == 63) {
-                moveHandler(&Board::template capture<BoardPiece::Rook,IsWhite,false,false,false,false>, &BoardState::RookMove_Right, from, to, BoardPiece::Rook, 4, ml);
-                return;
-            }
-        }
-        moveHandler(&Board::template capture<BoardPiece::Rook,IsWhite,false,false,false,false>, &BoardState::normal, from, to, BoardPiece::Rook, 4, ml);
-    }
-}
-
-template <bool IsWhite,bool WLC,bool WRC,bool BRC,bool BLC>
+template <class BoardState status,int depth>
 _fast static void rookMoves(const Board &brd, uint64_t chessMask,
                             uint64_t pinHV, uint64_t pinD,
                             MoveList &ml) noexcept {
     uint64_t rooksNotPinned, rooksPinnedHV;
-    if constexpr (IsWhite) {
+    if constexpr (status.IsWhite) {
         rooksNotPinned = brd.WRook & ~(pinHV | pinD);
         rooksPinnedHV = brd.WRook & pinHV;
     } else {
@@ -368,92 +279,90 @@ _fast static void rookMoves(const Board &brd, uint64_t chessMask,
     }
     Bitloop(rooksNotPinned) {
         const int from = __builtin_ctzll(rooksNotPinned);
-        assert(from < 64);
         uint64_t attacks = getRmagic(from, brd.Occ);
-        attacks = attacks & chessMask & enemyOrEmpty<IsWhite>(brd);
+        attacks = attacks & chessMask & enemyOrEmpty<status.IsWhite>(brd);
         uint64_t captures = attacks & brd.Occ;
         attacks = attacks & ~brd.Occ;
         Bitloop(attacks) {
             const int to = __builtin_ctzll(attacks);
-            handleRookMove<IsWhite,WLC,WRC,BRC,BLC>(from, to, ml);
+            moveHandler(rookMove<status,depth>,ml,from,to);
         }
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
-            handleCaptureRookMove<IsWhite,WLC,WRC,BRC,BLC>(from, to, ml);
+            moveHandler(rookCapture<status,depth>,ml,from,to);
         }
     }
     Bitloop(rooksPinnedHV) {
         const int from = __builtin_ctzll(rooksPinnedHV);
-        assert(from < 64);
         uint64_t attacks = getRmagic(from, brd.Occ);
-        attacks = attacks & chessMask & pinHV & enemyOrEmpty<IsWhite>(brd);
+        attacks = attacks & chessMask & pinHV & enemyOrEmpty<status.IsWhite>(brd);
         uint64_t captures = attacks & brd.Occ;
         attacks = attacks & ~brd.Occ;
         Bitloop(attacks) {
             const int to = __builtin_ctzll(attacks);
-            handleRookMove<IsWhite,WLC,WRC,BRC,BLC>(from, to, ml);
+            moveHandler(rookMove<status,depth>,ml,from,to);
         }
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
-            handleCaptureRookMove<IsWhite,WLC,WRC,BRC,BLC>(from, to, ml);
+            moveHandler(rookCapture<status,depth>,ml,from,to);
         }
     }
 }
 
-template <bool IsWhite>
+template <class BoardState status,int depth>
 _fast static void kingMoves(const Board &brd, uint64_t chessMask,
                             uint64_t kingBan, int kingPos,
                             MoveList &ml) noexcept {
-    uint64_t moves = kingMasks[kingPos] & ~kingBan & enemyOrEmpty<IsWhite>(brd);
+    uint64_t moves = kingMasks[kingPos] & ~kingBan & enemyOrEmpty<status.IsWhite>(brd);
     uint64_t captures = moves & brd.Occ;
     moves = moves & ~brd.Occ;
     Bitloop(moves) {
         const int to = __builtin_ctzll(moves);
-        moveHandler(&Board::template move<BoardPiece::King,IsWhite,false,false,false,false>,&BoardState::king,kingPos, to, BoardPiece::King, 0, ml);
+        moveHandler(kingMove<status,depth>,ml,kingPos,to);
     }
     Bitloop(captures) {
         const int to = __builtin_ctzll(captures);
-        moveHandler(&Board::template capture<BoardPiece::King,IsWhite,false,false,false,false>,&BoardState::king,kingPos, to, BoardPiece::King, 4, ml);
+        moveHandler(kingCapture<status,depth>,ml,kingPos,to);
     }
 }
 
-template <bool IsWhite, bool WLC, bool WRC, bool BLC, bool BRC>
+template <class BoardState status,int depth>
 _fast void castels(const Board &brd, uint64_t kingBan, MoveList &ml) noexcept {
-    if constexpr (IsWhite) {
-        if constexpr (WLC) {
+    if constexpr (status.IsWhite) {
+        if constexpr (status.WLC) {
             if ((!(WNotOccupiedL & brd.Occ)) && (!(WNotAttackedL & kingBan)) &&
                 (brd.WRook & WRookL)) {
-                moveHandler(&Board::template castle<BoardPiece::King, IsWhite, false, true, false, false>,&BoardState::king,4, 2, BoardPiece::King, 2, ml);
+                moveHandler(leftCastel<status,depth>,ml,4, 2);
             }
         }
-        if constexpr (WRC) {
+        if constexpr (status.WRC) {
             if ((!(WNotOccupiedR & brd.Occ)) && (!(WNotAttackedR & kingBan)) &&
                 (brd.WRook & WRookR)) {
-                moveHandler(&Board::template castle<BoardPiece::King,IsWhite,false,true,false,false>,&BoardState::king,4, 6, BoardPiece::King, 2, ml);
+                moveHandler(rightCastel<status,depth>,ml,4, 6);
             }
         }
     } else {
-        if constexpr (BLC) {
+        if constexpr (status.BLC) {
             if ((!(BNotOccupiedL & brd.Occ)) && (!(BNotAttackedL & kingBan)) &&
                 (brd.BRook & BRookL)) {
-                moveHandler(&Board::template castle<BoardPiece::King,IsWhite,false,false,true,false>,&BoardState::king,60, 58, BoardPiece::King, 2, ml);
+                moveHandler(leftCastel<status,depth>,ml,60, 58);
             }
         }
-        if constexpr (BRC) {
+        if constexpr (status.BRC) {
             if ((!(BNotOccupiedR & brd.Occ)) && (!(BNotAttackedR & kingBan)) &&
                 (brd.BRook & BRookR)) {
-                moveHandler(&Board::template castle<BoardPiece::King,IsWhite,false,false,false,true>,&BoardState::king,60, 62, BoardPiece::King, 2, ml);
+                moveHandler(rightCastel<status,depth>,ml,60, 62);
             }
         }
     }
 }
 
-template <bool IsWhite>
+template <class BoardState status,int depth>
 _fast void EPMoves(const Board &brd,int ep, MoveList &ml, uint64_t pinD,
                    uint64_t pinHV) noexcept {
     uint64_t EPRight, EPLeft, EPLeftPinned, EPRightPinned;
     uint64_t EPSquare = 1ull << ep;
-    if constexpr (IsWhite) {
+    if constexpr (status.IsWhite) {
         EPRight = (((brd.WPawn & ~(pinHV | pinD)) & ~File1) << 9) & EPSquare;
         EPLeft = (((brd.WPawn & ~(pinHV | pinD)) & ~File8) << 7) & EPSquare;
         EPRightPinned = (((brd.WPawn & pinD) & ~File1) << 9) & EPSquare & pinD;
@@ -466,21 +375,21 @@ _fast void EPMoves(const Board &brd,int ep, MoveList &ml, uint64_t pinD,
     }
     if (EPRight) {
         const int to = __builtin_ctzll(EPRight);
-        const int from = to - (IsWhite ? -9 : 7);
-        moveHandler(&Board::template EP<BoardPiece::Pawn,IsWhite,false,true,false,false>, &BoardState::normal,from, to, BoardPiece::Pawn, 3, ml);
+        const int from = to - (status.IsWhite ? -9 : 7);
+        moveHandler(EP<status,depth>,ml,from, to);
     }
     if (EPLeft) {
         const int to = __builtin_ctzll(EPLeft);
-        const int from = to - (IsWhite ? -7 : 9);
-        moveHandler(&Board::template EP<BoardPiece::Pawn,IsWhite,false,true,false,false>, &BoardState::normal,from, to, BoardPiece::Pawn, 3, ml);
+        const int from = to - (status.IsWhite ? -7 : 9);
+        moveHandler(EP<status,depth>,ml,from, to);
     }
 }
 
-template <bool IsWhite, bool EP, bool WLC, bool WRC, bool BLC, bool BRC>
+template <class BoardState status,int depth>
 _fast void genMoves(const Board &brd,int ep, MoveList &ml) noexcept
 {
     uint64_t king;
-    if constexpr (IsWhite) {
+    if constexpr (status.IsWhite) {
         king = brd.WKing;
     } else {
         king = brd.BKing;
@@ -490,21 +399,21 @@ _fast void genMoves(const Board &brd,int ep, MoveList &ml) noexcept
     uint64_t pinHV = 0;
     uint64_t pinD = 0;
     uint64_t kingBan = 0;
-    generateCheck<IsWhite>(brd, kingPos, pinHV, pinD, checkmask, kingBan);
-    pawnMoves<IsWhite>(brd, checkmask, pinHV, pinD, ml);
-    knightMoves<IsWhite>(brd, checkmask, pinHV, pinD, ml);
-    bishopMoves<IsWhite>(brd, checkmask, pinHV, pinD, ml);
-    queenMoves<IsWhite>(brd, checkmask, pinHV, pinD, ml);
-    rookMoves<IsWhite, WLC, WRC, BLC, BRC>(brd, checkmask, pinHV, pinD, ml);
-    kingMoves<IsWhite>(brd, checkmask, kingBan, kingPos, ml);
-    if constexpr (WLC|| WRC|| BLC|| BRC){
-        castels<IsWhite, WLC, WRC, BLC, BRC>(brd, kingBan, ml);
+    generateCheck<status.IsWhite>(brd, kingPos, pinHV, pinD, checkmask, kingBan);
+    pawnMoves<status,depth>(brd, checkmask, pinHV, pinD, ml);
+    knightMoves<status,depth>(brd, checkmask, pinHV, pinD, ml);
+    bishopMoves<status,depth>(brd, checkmask, pinHV, pinD, ml);
+    queenMoves<status,depth>(brd, checkmask, pinHV, pinD, ml);
+    rookMoves<status,depth>(brd, checkmask, pinHV, pinD, ml);
+    kingMoves<status,depth>(brd, checkmask, kingBan, kingPos, ml);
+    if constexpr (status.WLC|| status.WRC|| status.BLC|| status.BRC){
+        castels<status,depth>(brd, kingBan, ml);
     }
-    if constexpr (EP) {
-        EPMoves<IsWhite>(brd, ep, ml, pinD, pinHV);
+    if constexpr (status.EP) {
+        EPMoves<status,depth>(brd, ep, ml, pinD, pinHV);
     }
 }
-
+/*
 _fast void moveGenCall(const Board &brd, const int ep, MoveList &ml, bool WH, bool EP,
                                bool WL, bool WR, bool BL, bool BR) noexcept {
     if (WH && EP && WL && WR && BL && BR)
@@ -635,21 +544,7 @@ _fast void moveGenCall(const Board &brd, const int ep, MoveList &ml, bool WH, bo
          genMoves<false, false, false, false, false, true>(brd, ep, ml);
     if (!WH && !EP && !WL && !WR && !BL && !BR)
          genMoves<false, false, false, false, false, false>(brd, ep, ml);
-}
+}*/
 
 
-template <int depth> void perft(const Board &brd, const BoardState &state, long long &c) noexcept {
-    if constexpr (depth == 0) {
-        c++;
-        return;
-    } else {
-        MoveList ml = MoveList();
-        moveGenCall(brd, state.ep,ml, state.IsWhite, state.EP, state.WLC,state.WRC, state.BLC, state.BRC);
 
-        for (const moveCallback &m : ml.Moves) {
-            Board newBoard = (brd.*(m.moveFunc))(m.move);
-            BoardState newState = (state.*(m.state))(m.ep);
-            perft<depth - 1>(newBoard, newState, c);
-        }
-    }
-}

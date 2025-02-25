@@ -2,35 +2,27 @@
 #include <functional>
 
 #include "board.hpp"
-#include "move.hpp"
 #include <utility>
 #include <vector>
 
-using StateMoveFunc = BoardState (BoardState::*)(int) const noexcept;
-using MakeMoveFunc = Board (Board::*)(const Move&) const noexcept;
+using MakeMoveFunc = void (*)(const Board&,int,int);
 
-struct moveCallback {
-    Move move;
-    MakeMoveFunc moveFunc;
-    StateMoveFunc state;
-    int ep;
+struct callback{
+    MakeMoveFunc move;
+    int from;
+    int to;
 };
+
 
 class MoveList {
 public:
-    std::vector<moveCallback> Moves;
+    std::vector<callback> Moves;
 
     MoveList() { Moves.reserve(50); }
 
 
-    void addMove(const MakeMoveFunc& move, StateMoveFunc state,
-                 const uint8_t from, const uint8_t to, const BoardPiece pieceType, const uint8_t special) noexcept {
-        Moves.emplace_back((Move){from, to, pieceType, special}, move, state, 0);
-    }
-
-    void addMove(const MakeMoveFunc& move, StateMoveFunc state,
-                 const uint8_t from, const uint8_t to, const BoardPiece pieceType, const uint8_t special, int ep) noexcept {
-        Moves.emplace_back((Move){from, to, pieceType, special}, move, state, ep);
+    void addMove(MakeMoveFunc move,int from,int to) noexcept {
+        Moves.emplace_back(move,from,to);
     }
 };
 
