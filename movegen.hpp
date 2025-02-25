@@ -3,19 +3,21 @@
 #include "board.hpp"
 #include "check.hpp"
 #include "constants.hpp"
-#include "pawns.hpp"
 #include "move.hpp"
+#include "pawns.hpp"
 #include <cassert>
 #include <cstdint>
 #include <iostream>
 
-using MakeMoveFunc = void (*)(const Board&,int,int);
+using MakeMoveFunc = void (*)(const Board &, int, int);
 
-
-inline void moveHandler(MakeMoveFunc move,MoveList& ml,int from,int to) noexcept {
-    ml.addMove(move,from,to);
+_fast void moveHandler(const MakeMoveFunc &move, Callback *ml, int &count,
+                       int from, int to) noexcept {
+    Callback &cb = ml[count++];
+    cb.move = move;
+    cb.from = from;
+    cb.to = to;
 }
-
 
 template <bool IsWhite> _fast uint64_t enemyOrEmpty(const Board &brd) noexcept {
     if constexpr (IsWhite) {
@@ -24,9 +26,9 @@ template <bool IsWhite> _fast uint64_t enemyOrEmpty(const Board &brd) noexcept {
     return brd.White | ~brd.Occ;
 }
 
-template <class BoardState status,int depth>
+template <class BoardState status, int depth>
 _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
-                            uint64_t pinD, MoveList &ml) noexcept {
+                            uint64_t pinD, Callback *ml, int &count) noexcept {
     uint64_t pinnedD, pinnedHV, notPinned;
     if constexpr (status.IsWhite) {
         pinnedD = brd.WPawn & pinD;
@@ -48,20 +50,20 @@ _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
         const int to = __builtin_ctzll(promotions);
         if constexpr (status.IsWhite) {
             const int from = to - 8;
-            moveHandler(promote<status,depth>,ml,from,to);
+            moveHandler(promote<status, depth>, ml, count, from, to);
         } else {
             const int from = to + 8;
-            moveHandler(promote<status,depth>,ml,from,to);
+            moveHandler(promote<status, depth>, ml, count, from, to);
         }
     }
     Bitloop(forward) {
         const int to = __builtin_ctzll(forward);
         if constexpr (status.IsWhite) {
             const int from = to - 8;
-            moveHandler(pawnMove<status,depth>,ml,from,to);
+            moveHandler(pawnMove<status, depth>, ml, count, from, to);
         } else {
             const int from = to + 8;
-            moveHandler(pawnMove<status,depth>,ml,from,to);
+            moveHandler(pawnMove<status, depth>, ml, count, from, to);
         }
     }
     uint64_t doubleForwardNotPinned =
@@ -73,10 +75,10 @@ _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
         const int to = __builtin_ctzll(doubleForward);
         if constexpr (status.IsWhite) {
             const int from = to - 16;
-            moveHandler(pawnDoubleMove<status,depth>,ml,from,to);
+            moveHandler(pawnDoubleMove<status, depth>, ml, count, from, to);
         } else {
             const int from = to + 16;
-            moveHandler(pawnDoubleMove<status,depth>,ml,from,to);
+            moveHandler(pawnDoubleMove<status, depth>, ml, count, from, to);
         }
     }
     uint64_t leftNotPinned = pawnAttackLeft<status.IsWhite>(notPinned, brd);
@@ -88,22 +90,21 @@ _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
         const int to = __builtin_ctzll(promotions);
         if constexpr (status.IsWhite) {
             const int from = to - 7;
-            moveHandler(promoteCapture<status,depth>,ml,from,to);
+            moveHandler(promoteCapture<status, depth>, ml, count, from, to);
 
         } else {
             const int from = to + 9;
-            moveHandler(promoteCapture<status,depth>,ml,from,to);
-
+            moveHandler(promoteCapture<status, depth>, ml, count, from, to);
         }
     }
     Bitloop(left) {
         const int to = __builtin_ctzll(left);
         if constexpr (status.IsWhite) {
             const int from = to - 7;
-            moveHandler(pawnCapture<status,depth>,ml,from,to);
+            moveHandler(pawnCapture<status, depth>, ml, count, from, to);
         } else {
             const int from = to + 9;
-            moveHandler(pawnCapture<status,depth>,ml,from,to);
+            moveHandler(pawnCapture<status, depth>, ml, count, from, to);
         }
     }
     uint64_t rightNotPinned = pawnAttackRight<status.IsWhite>(notPinned, brd);
@@ -115,28 +116,28 @@ _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
         const int to = __builtin_ctzll(promotions);
         if constexpr (status.IsWhite) {
             const int from = to - 9;
-            moveHandler(promoteCapture<status,depth>,ml,from,to);
+            moveHandler(promoteCapture<status, depth>, ml, count, from, to);
         } else {
             const int from = to + 7;
-            moveHandler(promoteCapture<status,depth>,ml,from,to);
+            moveHandler(promoteCapture<status, depth>, ml, count, from, to);
         }
     }
     Bitloop(right) {
         const int to = __builtin_ctzll(right);
         if constexpr (status.IsWhite) {
             const int from = to - 9;
-            moveHandler(pawnCapture<status,depth>,ml,from,to);
+            moveHandler(pawnCapture<status, depth>, ml, count, from, to);
         } else {
             const int from = to + 7;
-            moveHandler(pawnCapture<status,depth>,ml,from,to);
+            moveHandler(pawnCapture<status, depth>, ml, count, from, to);
         }
     }
 }
 
-template <class BoardState status,int depth>
+template <class BoardState status, int depth>
 _fast static void knightMoves(const Board &brd, uint64_t chessMask,
-                              uint64_t pinHV, uint64_t pinD,
-                              MoveList &ml) noexcept {
+                              uint64_t pinHV, uint64_t pinD, Callback *ml,
+                              int &count) noexcept {
     uint64_t knights;
     if constexpr (status.IsWhite) {
         knights = brd.WKnight & ~(pinHV | pinD);
@@ -151,19 +152,19 @@ _fast static void knightMoves(const Board &brd, uint64_t chessMask,
         attacks = attacks & ~brd.Occ;
         Bitloop(attacks) {
             const int to = __builtin_ctzll(attacks);
-            moveHandler(knightMove<status,depth>,ml,from,to);
+            moveHandler(knightMove<status, depth>, ml, count, from, to);
         }
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
-            moveHandler(knightCapture<status,depth>,ml,from,to);
+            moveHandler(knightCapture<status, depth>, ml, count, from, to);
         }
     }
 }
 
-template <class BoardState status,int depth>
+template <class BoardState status, int depth>
 _fast static void bishopMoves(const Board &brd, uint64_t chessMask,
-                              uint64_t pinHV, uint64_t pinD,
-                              MoveList &ml) noexcept {
+                              uint64_t pinHV, uint64_t pinD, Callback *ml,
+                              int &count) noexcept {
     uint64_t bishopsNotPinned, bishopsPinnedD;
     if constexpr (status.IsWhite) {
         bishopsNotPinned = brd.WBishop & ~(pinHV | pinD);
@@ -180,34 +181,35 @@ _fast static void bishopMoves(const Board &brd, uint64_t chessMask,
         attacks = attacks & ~brd.Occ;
         Bitloop(attacks) {
             const int to = __builtin_ctzll(attacks);
-            moveHandler(bishopMove<status,depth>,ml,from,to);
+            moveHandler(bishopMove<status, depth>, ml, count, from, to);
         }
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
-            moveHandler(bishopCapture<status,depth>,ml,from,to);
+            moveHandler(bishopCapture<status, depth>, ml, count, from, to);
         }
     }
     Bitloop(bishopsPinnedD) {
         const int from = __builtin_ctzll(bishopsPinnedD);
         uint64_t attacks = getBmagic(from, brd.Occ);
-        attacks = attacks & chessMask & pinD & enemyOrEmpty<status.IsWhite>(brd);
+        attacks =
+            attacks & chessMask & pinD & enemyOrEmpty<status.IsWhite>(brd);
         uint64_t captures = attacks & brd.Occ;
         attacks = attacks & ~brd.Occ;
         Bitloop(attacks) {
             const int to = __builtin_ctzll(attacks);
-            moveHandler(bishopMove<status,depth>,ml,from,to);
+            moveHandler(bishopMove<status, depth>, ml, count, from, to);
         }
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
-            moveHandler(bishopCapture<status,depth>,ml,from,to);
+            moveHandler(bishopCapture<status, depth>, ml, count, from, to);
         }
     }
 }
 
-template <class BoardState status,int depth>
+template <class BoardState status, int depth>
 _fast static void queenMoves(const Board &brd, uint64_t chessMask,
-                             uint64_t pinHV, uint64_t pinD,
-                             MoveList &ml) noexcept {
+                             uint64_t pinHV, uint64_t pinD, Callback *ml,
+                             int &count) noexcept {
     uint64_t queenNotPinned, queenPinnedD, queenPinnedHV;
     if constexpr (status.IsWhite) {
         queenNotPinned = brd.WQueen & ~(pinHV | pinD);
@@ -226,49 +228,51 @@ _fast static void queenMoves(const Board &brd, uint64_t chessMask,
         attacks = attacks & ~brd.Occ;
         Bitloop(attacks) {
             const int to = __builtin_ctzll(attacks);
-            moveHandler(queenMove<status,depth>,ml,from,to);
+            moveHandler(queenMove<status, depth>, ml, count, from, to);
         }
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
-            moveHandler(queenCapture<status,depth>,ml,from,to);
+            moveHandler(queenCapture<status, depth>, ml, count, from, to);
         }
     }
     Bitloop(queenPinnedD) {
         const int from = __builtin_ctzll(queenPinnedD);
         uint64_t attacks = getQmagic(from, brd.Occ);
-        attacks = attacks & chessMask & pinD & enemyOrEmpty<status.IsWhite>(brd);
+        attacks =
+            attacks & chessMask & pinD & enemyOrEmpty<status.IsWhite>(brd);
         uint64_t captures = attacks & brd.Occ;
         attacks = attacks & ~brd.Occ;
         Bitloop(attacks) {
             const int to = __builtin_ctzll(attacks);
-            moveHandler(queenMove<status,depth>,ml,from,to);
+            moveHandler(queenMove<status, depth>, ml, count, from, to);
         }
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
-            moveHandler(queenCapture<status,depth>,ml,from,to);
+            moveHandler(queenCapture<status, depth>, ml, count, from, to);
         }
     }
     Bitloop(queenPinnedHV) {
         const int from = __builtin_ctzll(queenPinnedHV);
         uint64_t attacks = getQmagic(from, brd.Occ);
-        attacks = attacks & chessMask & pinHV & enemyOrEmpty<status.IsWhite>(brd);
+        attacks =
+            attacks & chessMask & pinHV & enemyOrEmpty<status.IsWhite>(brd);
         uint64_t captures = attacks & brd.Occ;
         attacks = attacks & ~brd.Occ;
         Bitloop(attacks) {
             const int to = __builtin_ctzll(attacks);
-            moveHandler(queenMove<status,depth>,ml,from,to);
+            moveHandler(queenMove<status, depth>, ml, count, from, to);
         }
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
-            moveHandler(queenCapture<status,depth>,ml,from,to);
+            moveHandler(queenCapture<status, depth>, ml, count, from, to);
         }
     }
 }
 
-template <class BoardState status,int depth>
+template <class BoardState status, int depth>
 _fast static void rookMoves(const Board &brd, uint64_t chessMask,
-                            uint64_t pinHV, uint64_t pinD,
-                            MoveList &ml) noexcept {
+                            uint64_t pinHV, uint64_t pinD, Callback *ml,
+                            int &count) noexcept {
     uint64_t rooksNotPinned, rooksPinnedHV;
     if constexpr (status.IsWhite) {
         rooksNotPinned = brd.WRook & ~(pinHV | pinD);
@@ -285,81 +289,84 @@ _fast static void rookMoves(const Board &brd, uint64_t chessMask,
         attacks = attacks & ~brd.Occ;
         Bitloop(attacks) {
             const int to = __builtin_ctzll(attacks);
-            moveHandler(rookMove<status,depth>,ml,from,to);
+            moveHandler(rookMove<status, depth>, ml, count, from, to);
         }
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
-            moveHandler(rookCapture<status,depth>,ml,from,to);
+            moveHandler(rookCapture<status, depth>, ml, count, from, to);
         }
     }
     Bitloop(rooksPinnedHV) {
         const int from = __builtin_ctzll(rooksPinnedHV);
         uint64_t attacks = getRmagic(from, brd.Occ);
-        attacks = attacks & chessMask & pinHV & enemyOrEmpty<status.IsWhite>(brd);
+        attacks =
+            attacks & chessMask & pinHV & enemyOrEmpty<status.IsWhite>(brd);
         uint64_t captures = attacks & brd.Occ;
         attacks = attacks & ~brd.Occ;
         Bitloop(attacks) {
             const int to = __builtin_ctzll(attacks);
-            moveHandler(rookMove<status,depth>,ml,from,to);
+            moveHandler(rookMove<status, depth>, ml, count, from, to);
         }
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
-            moveHandler(rookCapture<status,depth>,ml,from,to);
+            moveHandler(rookCapture<status, depth>, ml, count, from, to);
         }
     }
 }
 
-template <class BoardState status,int depth>
+template <class BoardState status, int depth>
 _fast static void kingMoves(const Board &brd, uint64_t chessMask,
-                            uint64_t kingBan, int kingPos,
-                            MoveList &ml) noexcept {
-    uint64_t moves = kingMasks[kingPos] & ~kingBan & enemyOrEmpty<status.IsWhite>(brd);
+                            uint64_t kingBan, int kingPos, Callback *ml,
+                            int &count) noexcept {
+    uint64_t moves =
+        kingMasks[kingPos] & ~kingBan & enemyOrEmpty<status.IsWhite>(brd);
     uint64_t captures = moves & brd.Occ;
     moves = moves & ~brd.Occ;
     Bitloop(moves) {
         const int to = __builtin_ctzll(moves);
-        moveHandler(kingMove<status,depth>,ml,kingPos,to);
+        moveHandler(kingMove<status, depth>, ml, count, kingPos, to);
     }
     Bitloop(captures) {
         const int to = __builtin_ctzll(captures);
-        moveHandler(kingCapture<status,depth>,ml,kingPos,to);
+        moveHandler(kingCapture<status, depth>, ml, count, kingPos, to);
     }
 }
 
-template <class BoardState status,int depth>
-_fast void castels(const Board &brd, uint64_t kingBan, MoveList &ml) noexcept {
+template <class BoardState status, int depth>
+_fast void castels(const Board &brd, uint64_t kingBan, Callback *ml,
+                   int &count) noexcept {
     if constexpr (status.IsWhite) {
         if constexpr (status.WLC) {
             if ((!(WNotOccupiedL & brd.Occ)) && (!(WNotAttackedL & kingBan)) &&
                 (brd.WRook & WRookL)) {
-                moveHandler(leftCastel<status,depth>,ml,4, 2);
+                moveHandler(leftCastel<status, depth>, ml, count, 4, 2);
             }
         }
         if constexpr (status.WRC) {
             if ((!(WNotOccupiedR & brd.Occ)) && (!(WNotAttackedR & kingBan)) &&
                 (brd.WRook & WRookR)) {
-                moveHandler(rightCastel<status,depth>,ml,4, 6);
+                moveHandler(rightCastel<status, depth>, ml, count, 4, 6);
             }
         }
     } else {
         if constexpr (status.BLC) {
             if ((!(BNotOccupiedL & brd.Occ)) && (!(BNotAttackedL & kingBan)) &&
                 (brd.BRook & BRookL)) {
-                moveHandler(leftCastel<status,depth>,ml,60, 58);
+                moveHandler(leftCastel<status, depth>, ml, count, 60, 58);
             }
         }
         if constexpr (status.BRC) {
             if ((!(BNotOccupiedR & brd.Occ)) && (!(BNotAttackedR & kingBan)) &&
                 (brd.BRook & BRookR)) {
-                moveHandler(rightCastel<status,depth>,ml,60, 62);
+                moveHandler(rightCastel<status, depth>, ml, count, 60, 62);
             }
         }
     }
 }
 
-template <class BoardState status,int depth>
-_fast void EPMoves(const Board &brd,int ep, MoveList &ml, uint64_t pinD,
-                   uint64_t pinHV) noexcept {
+template <class BoardState status, int depth>
+_fast void EPMoves(const Board &brd, int ep, Callback *ml, int &count,
+                   uint64_t pinD, uint64_t pinHV) noexcept {
     uint64_t EPRight, EPLeft, EPLeftPinned, EPRightPinned;
     uint64_t EPSquare = 1ull << ep;
     if constexpr (status.IsWhite) {
@@ -376,18 +383,18 @@ _fast void EPMoves(const Board &brd,int ep, MoveList &ml, uint64_t pinD,
     if (EPRight) {
         const int to = __builtin_ctzll(EPRight);
         const int from = to - (status.IsWhite ? -9 : 7);
-        moveHandler(EP<status,depth>,ml,from, to);
+        moveHandler(EP<status, depth>, ml, count, from, to);
     }
     if (EPLeft) {
         const int to = __builtin_ctzll(EPLeft);
         const int from = to - (status.IsWhite ? -7 : 9);
-        moveHandler(EP<status,depth>,ml,from, to);
+        moveHandler(EP<status, depth>, ml, count, from, to);
     }
 }
 
-template <class BoardState status,int depth>
-_fast void genMoves(const Board &brd,int ep, MoveList &ml) noexcept
-{
+template <class BoardState status, int depth>
+_fast void genMoves(const Board &brd, int ep, Callback *ml,
+                    int &count) noexcept {
     uint64_t king;
     if constexpr (status.IsWhite) {
         king = brd.WKing;
@@ -399,152 +406,147 @@ _fast void genMoves(const Board &brd,int ep, MoveList &ml) noexcept
     uint64_t pinHV = 0;
     uint64_t pinD = 0;
     uint64_t kingBan = 0;
-    generateCheck<status.IsWhite>(brd, kingPos, pinHV, pinD, checkmask, kingBan);
-    pawnMoves<status,depth>(brd, checkmask, pinHV, pinD, ml);
-    knightMoves<status,depth>(brd, checkmask, pinHV, pinD, ml);
-    bishopMoves<status,depth>(brd, checkmask, pinHV, pinD, ml);
-    queenMoves<status,depth>(brd, checkmask, pinHV, pinD, ml);
-    rookMoves<status,depth>(brd, checkmask, pinHV, pinD, ml);
-    kingMoves<status,depth>(brd, checkmask, kingBan, kingPos, ml);
-    if constexpr (status.WLC|| status.WRC|| status.BLC|| status.BRC){
-        castels<status,depth>(brd, kingBan, ml);
+    generateCheck<status.IsWhite>(brd, kingPos, pinHV, pinD, checkmask,
+                                  kingBan);
+    pawnMoves<status, depth>(brd, checkmask, pinHV, pinD, ml, count);
+    knightMoves<status, depth>(brd, checkmask, pinHV, pinD, ml, count);
+    bishopMoves<status, depth>(brd, checkmask, pinHV, pinD, ml, count);
+    queenMoves<status, depth>(brd, checkmask, pinHV, pinD, ml, count);
+    rookMoves<status, depth>(brd, checkmask, pinHV, pinD, ml, count);
+    kingMoves<status, depth>(brd, checkmask, kingBan, kingPos, ml, count);
+    if constexpr (status.WLC || status.WRC || status.BLC || status.BRC) {
+        castels<status, depth>(brd, kingBan, ml, count);
     }
     if constexpr (status.EP) {
-        EPMoves<status,depth>(brd, ep, ml, pinD, pinHV);
+        EPMoves<status, depth>(brd, ep, ml, count, pinD, pinHV);
     }
 }
 /*
-_fast void moveGenCall(const Board &brd, const int ep, MoveList &ml, bool WH, bool EP,
-                               bool WL, bool WR, bool BL, bool BR) noexcept {
-    if (WH && EP && WL && WR && BL && BR)
-        genMoves<true, true, true, true, true, true>(brd, ep, ml);
-    if (WH && EP && WL && WR && BL && !BR)
-        genMoves<true, true, true, true, true, false>(brd, ep, ml);
-    if (WH && EP && WL && WR && !BL && BR)
-        genMoves<true, true, true, true, false, true>(brd, ep, ml);
-    if (WH && EP && WL && WR && !BL && !BR)
-         genMoves<true, true, true, true, false, false>(brd, ep, ml);
-    if (WH && EP && WL && !WR && BL && BR)
-         genMoves<true, true, true, false, true, true>(brd, ep, ml);
-    if (WH && EP && WL && !WR && BL && !BR)
-         genMoves<true, true, true, false, true, false>(brd, ep, ml);
-    if (WH && EP && WL && !WR && !BL && BR)
-         genMoves<true, true, true, false, false, true>(brd, ep, ml);
-    if (WH && EP && WL && !WR && !BL && !BR)
-         genMoves<true, true, true, false, false, false>(brd, ep, ml);
+_fast void moveGenCall(const Board &brd, const int ep, Callback* ml, count, bool
+WH, bool EP, bool WL, bool WR, bool BL, bool BR) noexcept { if (WH && EP && WL
+&& WR
+&& BL && BR) genMoves<true, true, true, true, true, true>(brd, ep, ml, count);
+if (WH
+&& EP && WL && WR && BL && !BR) genMoves<true, true, true, true, true,
+false>(brd, ep, ml, count); if (WH && EP && WL && WR && !BL && BR)
+genMoves<true, true, true, true, false, true>(brd, ep, ml, count); if (WH && EP
+&& WL && WR && !BL && !BR) genMoves<true, true, true, true, false, false>(brd,
+ep, ml, count); if (WH && EP && WL && !WR && BL && BR) genMoves<true, true,
+true, false, true, true>(brd, ep, ml, count); if (WH && EP && WL && !WR && BL &&
+!BR) genMoves<true, true, true, false, true, false>(brd, ep, ml, count); if (WH
+&& EP && WL && !WR && !BL && BR) genMoves<true, true, true, false, false,
+true>(brd, ep, ml, count); if (WH && EP && WL && !WR && !BL && !BR)
+         genMoves<true, true, true, false, false, false>(brd, ep, ml, count);
     if (WH && EP && !WL && WR && BL && BR)
-         genMoves<true, true, false, true, true, true>(brd, ep, ml);
+         genMoves<true, true, false, true, true, true>(brd, ep, ml, count);
     if (WH && EP && !WL && WR && BL && !BR)
-         genMoves<true, true, false, true, true, false>(brd, ep, ml);
+         genMoves<true, true, false, true, true, false>(brd, ep, ml, count);
     if (WH && EP && !WL && WR && !BL && BR)
-         genMoves<true, true, false, true, false, true>(brd, ep, ml);
+         genMoves<true, true, false, true, false, true>(brd, ep, ml, count);
     if (WH && EP && !WL && WR && !BL && !BR)
-         genMoves<true, true, false, true, false, false>(brd, ep, ml);
+         genMoves<true, true, false, true, false, false>(brd, ep, ml, count);
     if (WH && EP && !WL && !WR && BL && BR)
-         genMoves<true, true, false, false, true, true>(brd, ep, ml);
+         genMoves<true, true, false, false, true, true>(brd, ep, ml, count);
     if (WH && EP && !WL && !WR && BL && !BR)
-         genMoves<true, true, false, false, true, false>(brd, ep, ml);
+         genMoves<true, true, false, false, true, false>(brd, ep, ml, count);
     if (WH && EP && !WL && !WR && !BL && BR)
-         genMoves<true, true, false, false, false, true>(brd, ep, ml);
+         genMoves<true, true, false, false, false, true>(brd, ep, ml, count);
     if (WH && EP && !WL && !WR && !BL && !BR)
-         genMoves<true, true, false, false, false, false>(brd, ep, ml);
+         genMoves<true, true, false, false, false, false>(brd, ep, ml, count);
     if (WH && !EP && WL && WR && BL && BR)
-         genMoves<true, false, true, true, true, true>(brd, ep, ml);
+         genMoves<true, false, true, true, true, true>(brd, ep, ml, count);
     if (WH && !EP && WL && WR && BL && !BR)
-         genMoves<true, false, true, true, true, false>(brd, ep, ml);
+         genMoves<true, false, true, true, true, false>(brd, ep, ml, count);
     if (WH && !EP && WL && WR && !BL && BR)
-         genMoves<true, false, true, true, false, true>(brd, ep, ml);
+         genMoves<true, false, true, true, false, true>(brd, ep, ml, count);
     if (WH && !EP && WL && WR && !BL && !BR)
-         genMoves<true, false, true, true, false, false>(brd, ep, ml);
+         genMoves<true, false, true, true, false, false>(brd, ep, ml, count);
     if (WH && !EP && WL && !WR && BL && BR)
-         genMoves<true, false, true, false, true, true>(brd, ep, ml);
+         genMoves<true, false, true, false, true, true>(brd, ep, ml, count);
     if (WH && !EP && WL && !WR && BL && !BR)
-         genMoves<true, false, true, false, true, false>(brd, ep, ml);
+         genMoves<true, false, true, false, true, false>(brd, ep, ml, count);
     if (WH && !EP && WL && !WR && !BL && BR)
-         genMoves<true, false, true, false, false, true>(brd, ep, ml);
+         genMoves<true, false, true, false, false, true>(brd, ep, ml, count);
     if (WH && !EP && WL && !WR && !BL && !BR)
-         genMoves<true, false, true, false, false, false>(brd, ep, ml);
+         genMoves<true, false, true, false, false, false>(brd, ep, ml, count);
     if (WH && !EP && !WL && WR && BL && BR)
-         genMoves<true, false, false, true, true, true>(brd, ep, ml);
+         genMoves<true, false, false, true, true, true>(brd, ep, ml, count);
     if (WH && !EP && !WL && WR && BL && !BR)
-         genMoves<true, false, false, true, true, false>(brd, ep, ml);
+         genMoves<true, false, false, true, true, false>(brd, ep, ml, count);
     if (WH && !EP && !WL && WR && !BL && BR)
-         genMoves<true, false, false, true, false, true>(brd, ep, ml);
+         genMoves<true, false, false, true, false, true>(brd, ep, ml, count);
     if (WH && !EP && !WL && WR && !BL && !BR)
-         genMoves<true, false, false, true, false, false>(brd, ep, ml);
+         genMoves<true, false, false, true, false, false>(brd, ep, ml, count);
     if (WH && !EP && !WL && !WR && BL && BR)
-         genMoves<true, false, false, false, true, true>(brd, ep, ml);
+         genMoves<true, false, false, false, true, true>(brd, ep, ml, count);
     if (WH && !EP && !WL && !WR && BL && !BR)
-         genMoves<true, false, false, false, true, false>(brd, ep, ml);
+         genMoves<true, false, false, false, true, false>(brd, ep, ml, count);
     if (WH && !EP && !WL && !WR && !BL && BR)
-         genMoves<true, false, false, false, false, true>(brd, ep, ml);
+         genMoves<true, false, false, false, false, true>(brd, ep, ml, count);
     if (WH && !EP && !WL && !WR && !BL && !BR)
-         genMoves<true, false, false, false, false, false>(brd, ep, ml);
+         genMoves<true, false, false, false, false, false>(brd, ep, ml, count);
     if (!WH && EP && WL && WR && BL && BR)
-         genMoves<false, true, true, true, true, true>(brd, ep, ml);
+         genMoves<false, true, true, true, true, true>(brd, ep, ml, count);
     if (!WH && EP && WL && WR && BL && !BR)
-         genMoves<false, true, true, true, true, false>(brd, ep, ml);
+         genMoves<false, true, true, true, true, false>(brd, ep, ml, count);
     if (!WH && EP && WL && WR && !BL && BR)
-         genMoves<false, true, true, true, false, true>(brd, ep, ml);
+         genMoves<false, true, true, true, false, true>(brd, ep, ml, count);
     if (!WH && EP && WL && WR && !BL && !BR)
-         genMoves<false, true, true, true, false, false>(brd, ep, ml);
+         genMoves<false, true, true, true, false, false>(brd, ep, ml, count);
     if (!WH && EP && WL && !WR && BL && BR)
-         genMoves<false, true, true, false, true, true>(brd, ep, ml);
+         genMoves<false, true, true, false, true, true>(brd, ep, ml, count);
     if (!WH && EP && WL && !WR && BL && !BR)
-         genMoves<false, true, true, false, true, false>(brd, ep, ml);
+         genMoves<false, true, true, false, true, false>(brd, ep, ml, count);
     if (!WH && EP && WL && !WR && !BL && BR)
-         genMoves<false, true, true, false, false, true>(brd, ep, ml);
+         genMoves<false, true, true, false, false, true>(brd, ep, ml, count);
     if (!WH && EP && WL && !WR && !BL && !BR)
-         genMoves<false, true, true, false, false, false>(brd, ep, ml);
+         genMoves<false, true, true, false, false, false>(brd, ep, ml, count);
     if (!WH && EP && !WL && WR && BL && BR)
-         genMoves<false, true, false, true, true, true>(brd, ep, ml);
+         genMoves<false, true, false, true, true, true>(brd, ep, ml, count);
     if (!WH && EP && !WL && WR && BL && !BR)
-         genMoves<false, true, false, true, true, false>(brd, ep, ml);
+         genMoves<false, true, false, true, true, false>(brd, ep, ml, count);
     if (!WH && EP && !WL && WR && !BL && BR)
-         genMoves<false, true, false, true, false, true>(brd, ep, ml);
+         genMoves<false, true, false, true, false, true>(brd, ep, ml, count);
     if (!WH && EP && !WL && WR && !BL && !BR)
-         genMoves<false, true, false, true, false, false>(brd, ep, ml);
+         genMoves<false, true, false, true, false, false>(brd, ep, ml, count);
     if (!WH && EP && !WL && !WR && BL && BR)
-         genMoves<false, true, false, false, true, true>(brd, ep, ml);
+         genMoves<false, true, false, false, true, true>(brd, ep, ml, count);
     if (!WH && EP && !WL && !WR && BL && !BR)
-         genMoves<false, true, false, false, true, false>(brd, ep, ml);
+         genMoves<false, true, false, false, true, false>(brd, ep, ml, count);
     if (!WH && EP && !WL && !WR && !BL && BR)
-         genMoves<false, true, false, false, false, true>(brd, ep, ml);
+         genMoves<false, true, false, false, false, true>(brd, ep, ml, count);
     if (!WH && EP && !WL && !WR && !BL && !BR)
-         genMoves<false, true, false, false, false, false>(brd, ep, ml);
+         genMoves<false, true, false, false, false, false>(brd, ep, ml, count);
     if (!WH && !EP && WL && WR && BL && BR)
-         genMoves<false, false, true, true, true, true>(brd, ep, ml);
+         genMoves<false, false, true, true, true, true>(brd, ep, ml, count);
     if (!WH && !EP && WL && WR && BL && !BR)
-         genMoves<false, false, true, true, true, false>(brd, ep, ml);
+         genMoves<false, false, true, true, true, false>(brd, ep, ml, count);
     if (!WH && !EP && WL && WR && !BL && BR)
-         genMoves<false, false, true, true, false, true>(brd, ep, ml);
+         genMoves<false, false, true, true, false, true>(brd, ep, ml, count);
     if (!WH && !EP && WL && WR && !BL && !BR)
-         genMoves<false, false, true, true, false, false>(brd, ep, ml);
+         genMoves<false, false, true, true, false, false>(brd, ep, ml, count);
     if (!WH && !EP && WL && !WR && BL && BR)
-         genMoves<false, false, true, false, true, true>(brd, ep, ml);
+         genMoves<false, false, true, false, true, true>(brd, ep, ml, count);
     if (!WH && !EP && WL && !WR && BL && !BR)
-         genMoves<false, false, true, false, true, false>(brd, ep, ml);
+         genMoves<false, false, true, false, true, false>(brd, ep, ml, count);
     if (!WH && !EP && WL && !WR && !BL && BR)
-         genMoves<false, false, true, false, false, true>(brd, ep, ml);
+         genMoves<false, false, true, false, false, true>(brd, ep, ml, count);
     if (!WH && !EP && WL && !WR && !BL && !BR)
-         genMoves<false, false, true, false, false, false>(brd, ep, ml);
+         genMoves<false, false, true, false, false, false>(brd, ep, ml, count);
     if (!WH && !EP && !WL && WR && BL && BR)
-         genMoves<false, false, false, true, true, true>(brd, ep, ml);
+         genMoves<false, false, false, true, true, true>(brd, ep, ml, count);
     if (!WH && !EP && !WL && WR && BL && !BR)
-         genMoves<false, false, false, true, true, false>(brd, ep, ml);
+         genMoves<false, false, false, true, true, false>(brd, ep, ml, count);
     if (!WH && !EP && !WL && WR && !BL && BR)
-         genMoves<false, false, false, true, false, true>(brd, ep, ml);
+         genMoves<false, false, false, true, false, true>(brd, ep, ml, count);
     if (!WH && !EP && !WL && WR && !BL && !BR)
-         genMoves<false, false, false, true, false, false>(brd, ep, ml);
+         genMoves<false, false, false, true, false, false>(brd, ep, ml, count);
     if (!WH && !EP && !WL && !WR && BL && BR)
-         genMoves<false, false, false, false, true, true>(brd, ep, ml);
+         genMoves<false, false, false, false, true, true>(brd, ep, ml, count);
     if (!WH && !EP && !WL && !WR && BL && !BR)
-         genMoves<false, false, false, false, true, false>(brd, ep, ml);
+         genMoves<false, false, false, false, true, false>(brd, ep, ml, count);
     if (!WH && !EP && !WL && !WR && !BL && BR)
-         genMoves<false, false, false, false, false, true>(brd, ep, ml);
+         genMoves<false, false, false, false, false, true>(brd, ep, ml, count);
     if (!WH && !EP && !WL && !WR && !BL && !BR)
-         genMoves<false, false, false, false, false, false>(brd, ep, ml);
+         genMoves<false, false, false, false, false, false>(brd, ep, ml, count);
 }*/
-
-
-

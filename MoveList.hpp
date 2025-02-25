@@ -1,28 +1,26 @@
 #pragma once
-#include <functional>
 
 #include "board.hpp"
 #include <utility>
 #include <vector>
+/*
+using MakeMoveFunc = void (*)(const Board &, int, int);
 
-using MakeMoveFunc = void (*)(const Board&,int,int);
-
-struct callback{
+struct callback {
     MakeMoveFunc move;
     int from;
     int to;
 };
 
-
 class MoveList {
-public:
+  public:
     std::vector<callback> Moves;
 
-    MoveList() { Moves.reserve(50); }
+    MoveList() { Moves.reserve(100); }
 
+    void addMove(const MakeMoveFunc &move, int from, int to, int& count)
+noexcept {
 
-    void addMove(MakeMoveFunc move,int from,int to) noexcept {
-        Moves.emplace_back(move,from,to);
+        Moves.emplace_back(move, from, to);
     }
-};
-
+};*/
