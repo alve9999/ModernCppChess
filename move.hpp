@@ -146,7 +146,7 @@ constexpr inline void perft(const Board &brd, int ep) noexcept {
         for (int i = 0; i < count; i++) {
             ml[i].move(brd, ml[i].from, ml[i].to);
         }
-        if constexpr (depth == 7) {
+        if constexpr (depth == 5) {
             std::cout << c << std::endl;
         }
     }

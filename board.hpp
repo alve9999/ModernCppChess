@@ -182,8 +182,8 @@ struct Board {
         const uint64_t wr = WRook;
         const uint64_t wq = WQueen;
         const uint64_t wk = WKing;
-        const uint64_t rem = 1ULL << moveTo;
         const uint64_t mov = 1ULL << moveTo | 1ULL << moveFrom;
+        const uint64_t rem = ~(1ULL << moveTo);
         if constexpr (IsWhite) {
             if constexpr (BoardPiece::Pawn == piece)
                 return Board(bp & rem, bn & rem, bb & rem, br & rem, bq & rem,
@@ -244,14 +244,13 @@ struct Board {
         const uint64_t to = 1ULL << moveTo;
         const uint64_t mov = from | to;
         if constexpr (IsWhite) {
-            const uint64_t remove = ~(1ULL << (moveTo - 8));
-            return Board(bp & remove, bn & remove, bb & remove, br & remove,
-                         bq & remove, bk & remove, wp ^ mov, wn, wb, wr, wq,
-                         wk);
+            const uint64_t remove = 1ULL << (moveTo - 8);
+            return Board(bp & remove, bn, bb, br, bq, bk, wp ^ mov, wn, wb, wr, 
+                         wq, wk);
         } else {
-            const uint64_t remove = ~(1ULL << (moveTo + 8));
-            return Board(bp ^ mov, bn, bb, br, bq, bk, wp & remove, wn & remove,
-                         wb & remove, wr & remove, wq & remove, wk & remove);
+            const uint64_t remove = 1ULL << (moveTo + 8);
+            return Board(bp ^ mov, bn, bb, br, bq, bk, wp & remove, wn, 
+                         wb, wr, wq, wk);
         }
     }
 
@@ -317,7 +316,7 @@ struct Board {
         const uint64_t wk = WKing;
         const uint64_t from = 1ULL << moveFrom;
         const uint64_t to = 1ULL << moveTo;
-        const uint64_t rem = 1ULL << moveTo;
+        const uint64_t rem = ~(1ULL << moveTo);
         if constexpr (IsWhite) {
             if constexpr (piece == BoardPiece::Queen)
                 return Board(bp & rem, bn & rem, bb & rem, br & rem, bq & rem,
