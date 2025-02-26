@@ -3,15 +3,18 @@
 #include "uci.hpp"
 #include <chrono>
 #include <iostream>
+
+
 int main() {
     // MoveList ml = MoveList();
-    constexpr const char* Fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 " ;
+    constexpr const char* Fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" ;
     const Board brd =
         loadFenBoard(Fen);
     constexpr BoardState state = parseBoardState(Fen);
+    constexpr int ep = parseEnPassantSquare(Fen);
     // uciRunGame();
     auto start = std::chrono::high_resolution_clock::now();
-    perft<state,5>(brd,0);
+    perft<state,7>(brd,ep);
     auto end = std::chrono::high_resolution_clock::now();
     auto duration =
         std::chrono::duration_cast<std::chrono::milliseconds>(end - start);

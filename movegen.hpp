@@ -364,30 +364,31 @@ _fast void castels(const Board &brd, uint64_t kingBan, Callback *ml,
     }
 }
 
+
 template <class BoardState status, int depth>
 _fast void EPMoves(const Board &brd, int ep, Callback *ml, int &count,
                    uint64_t pinD, uint64_t pinHV) noexcept {
     uint64_t EPRight, EPLeft, EPLeftPinned, EPRightPinned;
     uint64_t EPSquare = 1ull << ep;
     if constexpr (status.IsWhite) {
-        EPRight = (((brd.WPawn & ~(pinHV | pinD)) & ~File1) << 9) & EPSquare;
-        EPLeft = (((brd.WPawn & ~(pinHV | pinD)) & ~File8) << 7) & EPSquare;
-        EPRightPinned = (((brd.WPawn & pinD) & ~File1) << 9) & EPSquare & pinD;
-        EPLeftPinned = (((brd.WPawn & pinD) & ~File8) << 7) & EPSquare & pinD;
+        EPLeft = (((brd.WPawn & ~(pinHV | pinD)) & ~File1) << 9) & EPSquare;
+        EPRight = (((brd.WPawn & ~(pinHV | pinD)) & ~File8) << 7) & EPSquare;
+        EPLeftPinned = (((brd.WPawn & pinD) & ~File1) << 9) & EPSquare & pinD;
+        EPRightPinned = (((brd.WPawn & pinD) & ~File8) << 7) & EPSquare & pinD;
     } else {
-        EPRight = (((brd.BPawn & ~(pinHV | pinD)) & ~File1) >> 7) & EPSquare;
-        EPLeft = (((brd.BPawn & ~(pinHV | pinD)) & ~File8) >> 9) & EPSquare;
-        EPRightPinned = (((brd.BPawn & pinD) & ~File1) >> 7) & EPSquare & pinD;
-        EPLeftPinned = (((brd.BPawn & pinD) & ~File8) >> 9) & EPSquare & pinD;
+        EPLeft = (((brd.BPawn & ~(pinHV | pinD)) & ~File1) >> 7) & EPSquare;
+        EPRight = (((brd.BPawn & ~(pinHV | pinD)) & ~File8) >> 9) & EPSquare;
+        EPLeftPinned = (((brd.BPawn & pinD) & ~File1) >> 7) & EPSquare & pinD;
+        EPRightPinned = (((brd.BPawn & pinD) & ~File8) >> 9) & EPSquare & pinD;
     }
     if (EPRight) {
         const int to = __builtin_ctzll(EPRight);
-        const int from = to - (status.IsWhite ? -9 : 7);
+        const int from = to + (status.IsWhite ? -7 : 9);
         moveHandler(EP<status, depth>, ml, count, from, to);
     }
     if (EPLeft) {
         const int to = __builtin_ctzll(EPLeft);
-        const int from = to - (status.IsWhite ? -7 : 9);
+        const int from = to + (status.IsWhite ? -9 : 7);
         moveHandler(EP<status, depth>, ml, count, from, to);
     }
 }

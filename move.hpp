@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <sys/types.h>
 #include <utility>
+#include <functional>
 
 inline std::ostream &operator<<(std::ostream &os, const Move &m) {
     os << "From: " << static_cast<int>(m.from)
@@ -21,107 +22,242 @@ inline int algToCoord(const std::string &square) {
     return (8 * row + column);
 }
 
+struct MoveCallbacks {
+    std::function<Board()> boardCallback;
+    std::function<BoardState()> stateCallback;
+};
+
 template <bool IsWhite>
-_fast Move algebraicToMove(std::string &alg, const Board &brd,
-                           const BoardState state) {
+_fast MoveCallbacks algebraicToMove(std::string &alg, const Board &brd,
+                         const BoardState state, int ep) {
     uint8_t from = algToCoord(alg.substr(0, 2));
     uint8_t to = algToCoord(alg.substr(2, 4));
-    uint8_t special = 0;
-    BoardPiece type;
-    bool capture;
-    if (ISSET(brd.Occ, to)) {
-        special += 4;
-    }
+    BoardPiece type = BoardPiece::Pawn;
+    bool capture = ISSET(brd.Occ, to);
+    int special = 0;
 
     if constexpr (IsWhite) {
         if (ISSET(brd.WPawn, from)) {
             type = BoardPiece::Pawn;
-            /*if (to == state.ep) {
-                special = 3;
-            }*/
-            if (abs(from - to) == 16) {
-                special = 1;
+            if (to == ep) {
+                special = 3; // en passant
             }
-            if (to % 8 == 7) {
-                std::string s = alg.substr(4, 5);
+            if (abs(from - to) == 16) {
+                special = 1; // pawn double move
+            }
+            if (to / 8 == 7) { 
+                std::string s = alg.length() > 4 ? alg.substr(4, 5) : "";
                 if (s == "n") {
-                    special += 8;
+                    special += 8; // promote to knight
                 }
-                if (s == "b") {
-                    special += 9;
+                else if (s == "b") {
+                    special += 9; // promote to bishop
                 }
-                if (s == "r") {
-                    special += 10;
+                else if (s == "r") {
+                    special += 10; // promote to rook
                 }
-                if (s == "q") {
-                    special += 11;
+                else if (s == "q" || s.empty()) {
+                    special += 11; // promote to queen 
                 }
             }
         }
-        if (ISSET(brd.WKnight, from)) {
+        else if (ISSET(brd.WKnight, from)) {
             type = BoardPiece::Knight;
         }
-        if (ISSET(brd.WBishop, from)) {
+        else if (ISSET(brd.WBishop, from)) {
             type = BoardPiece::Bishop;
         }
-        if (ISSET(brd.WRook, from)) {
+        else if (ISSET(brd.WRook, from)) {
             type = BoardPiece::Rook;
+            if (from == 0) { // a1 - queenside rook
+                special = 4; // track left rook move
+            }
+            else if (from == 7) { // h1 - kingside rook
+                special = 5; // track right rook move
+            }
         }
-        if (ISSET(brd.WQueen, from)) {
+        else if (ISSET(brd.WQueen, from)) {
             type = BoardPiece::Queen;
         }
-        if (ISSET(brd.WKing, from)) {
-            if (abs(from - to) == 2) {
-                special = 2;
-            }
+        else if (ISSET(brd.WKing, from)) {
             type = BoardPiece::King;
+            if (abs(from - to) == 2) {
+                special = 2; // castling
+            }
         }
-    } else {
+    } 
+    else { // Black pieces
         if (ISSET(brd.BPawn, from)) {
             type = BoardPiece::Pawn;
-            /*if (to == state.ep) {
-                special = 3;
-            }*/
-            if (abs(from - to) == 16) {
-                special = 1;
+            if (to == ep) {
+                special = 3; // en passant
             }
-            if (to % 8 == 0) {
-                std::string s = alg.substr(4, 5);
+            if (abs(from - to) == 16) {
+                special = 1; // pawn double move
+            }
+            if (to / 8 == 0) { // promotion (reaching the 1st rank)
+                std::string s = alg.length() > 4 ? alg.substr(4, 5) : "";
                 if (s == "n") {
-                    special += 8;
+                    special += 8; // promote to knight
                 }
-                if (s == "b") {
-                    special += 9;
+                else if (s == "b") {
+                    special += 9; // promote to bishop
                 }
-                if (s == "r") {
-                    special += 10;
+                else if (s == "r") {
+                    special += 10; // promote to rook
                 }
-                if (s == "q") {
-                    special += 11;
+                else if (s == "q" || s.empty()) {
+                    special += 11; // promote to queen (default)
                 }
             }
         }
-        if (ISSET(brd.BKnight, from)) {
+        else if (ISSET(brd.BKnight, from)) {
             type = BoardPiece::Knight;
         }
-        if (ISSET(brd.BBishop, from)) {
+        else if (ISSET(brd.BBishop, from)) {
             type = BoardPiece::Bishop;
         }
-        if (ISSET(brd.BRook, from)) {
+        else if (ISSET(brd.BRook, from)) {
             type = BoardPiece::Rook;
+            if (from == 56) { // a8 - queenside rook
+                special = 4; // track left rook move
+            }
+            else if (from == 63) { // h8 - kingside rook
+                special = 5; // track right rook move
+            }
         }
-        if (ISSET(brd.BQueen, from)) {
+        else if (ISSET(brd.BQueen, from)) {
             type = BoardPiece::Queen;
         }
-        if (ISSET(brd.BKing, from)) {
-            if (abs(from - to) == 2) {
-                special = 2;
-            }
+        else if (ISSET(brd.BKing, from)) {
             type = BoardPiece::King;
+            if (abs(from - to) == 2) {
+                special = 2; // castling
+            }
         }
     }
+    
+    std::function<Board()> boardCallback;
+    std::function<BoardState()> stateCallback;
 
-    return Move{from, to, type, special};
+    if (special == 2) { // Castling
+        if constexpr (IsWhite) {
+            if (to > from) { // King-side castling
+                boardCallback = [&brd]() {
+                    return brd.template castle<BoardPiece::King, true, false, true, false, false>();
+                };
+            } else { // Queen-side castling
+                boardCallback = [&brd]() {
+                    return brd.template castle<BoardPiece::King, true, true, false, false, false>();
+                };
+            }
+        } else {
+            if (to > from) { // King-side castling
+                boardCallback = [&brd]() {
+                    return brd.template castle<BoardPiece::King, false, false, false, false, true>();
+                };
+            } else { // Queen-side castling
+                boardCallback = [&brd]() {
+                    return brd.template castle<BoardPiece::King, false, false, false, true, false>();
+                };
+            }
+        }
+    } else if (special == 3) { // En Passant
+        boardCallback = [&brd, from, to]() {
+            if constexpr (IsWhite) {
+                return brd.template EP<BoardPiece::Pawn, true, false, false, false, false>(from, to);
+            } else {
+                return brd.template EP<BoardPiece::Pawn, false, false, false, false, false>(from, to);
+            }
+        };
+    }
+    else if (special >= 8 && special <= 11) { // Promotion
+        BoardPiece promotePiece;
+        switch (special) {
+            case 8: promotePiece = BoardPiece::Knight; break;
+            case 9: promotePiece = BoardPiece::Bishop; break;
+            case 10: promotePiece = BoardPiece::Rook; break;
+            default: promotePiece = BoardPiece::Queen; break;
+        }
+
+        if (capture) {
+            boardCallback = [&brd, promotePiece, from, to]() {
+                return brd.template promoteCapture<promotePiece,IsWhite,false,false,false,false>(from, to);
+            };
+        } 
+        else {
+            boardCallback = [&brd, promotePiece, from, to]() {
+                return brd.template promote<promotePiece,IsWhite,false,false,false,false>(from, to);
+            };
+        }
+    }
+    else if (capture) {
+        boardCallback = [&brd, type, from, to]() {
+            switch (type) {
+                case BoardPiece::Pawn:
+                    return brd.template capture<BoardPiece::Pawn, IsWhite, false, false, false, false>(from, to);
+                case BoardPiece::Knight:
+                    return brd.template capture<BoardPiece::Knight, IsWhite, false, false, false, false>(from, to);
+                case BoardPiece::Bishop:
+                    return brd.template capture<BoardPiece::Bishop, IsWhite, false, false, false, false>(from, to);
+                case BoardPiece::Rook:
+                    return brd.template capture<BoardPiece::Rook, IsWhite, false, false, false, false>(from, to);
+                case BoardPiece::Queen:
+                    return brd.template capture<BoardPiece::Queen, IsWhite, false, false, false, false>(from, to);
+                case BoardPiece::King:
+                    return brd.template capture<BoardPiece::King, IsWhite, false, false, false, false>(from, to);
+                default:
+                    return brd; 
+            }
+        };
+    } 
+    else { 
+        boardCallback = [&brd, type, from, to]() {
+            switch (type) {
+                case BoardPiece::Pawn:
+                    return brd.template move<BoardPiece::Pawn, IsWhite, false, false, false, false>(from, to);
+                case BoardPiece::Knight:
+                    return brd.template move<BoardPiece::Knight, IsWhite, false, false, false, false>(from, to);
+                case BoardPiece::Bishop:
+                    return brd.template move<BoardPiece::Bishop, IsWhite, false, false, false, false>(from, to);
+                case BoardPiece::Rook:
+                    return brd.template move<BoardPiece::Rook, IsWhite, false, false, false, false>(from, to);
+                case BoardPiece::Queen:
+                    return brd.template move<BoardPiece::Queen, IsWhite, false, false, false, false>(from, to);
+                case BoardPiece::King:
+                    return brd.template move<BoardPiece::King, IsWhite, false, false, false, false>(from, to);
+                default:
+                    return brd;
+            }
+        };
+    }
+    if (special == 1) { 
+        stateCallback = [&state]() {
+            return state.pawn();
+        };
+    } else if (special == 2) { 
+        stateCallback = [&state]() {
+            return state.king();
+        };
+    } else if (special == 4) { 
+        stateCallback = [&state]() {
+            return state.rookMoveLeft();
+        };
+    } else if (special == 5) { 
+        stateCallback = [&state]() {
+            return state.rookMoveRight();
+        };
+    } else if (type == BoardPiece::King) { 
+        stateCallback = [&state]() {
+            return state.king();
+        };
+    } else {
+        stateCallback = [&state]() {
+            return state.normal();
+        };
+    }
+
+    return MoveCallbacks{boardCallback, stateCallback};
 }
 
 static long long c = 0;
@@ -133,7 +269,8 @@ struct Callback {
     uint8_t from;
     uint8_t to;
 };
-
+constexpr const int gd = 7;
+constexpr const bool count_succ = false;
 template <class BoardState status, int depth>
 constexpr inline void perft(const Board &brd, int ep) noexcept {
     if constexpr (depth == 0) {
@@ -143,10 +280,17 @@ constexpr inline void perft(const Board &brd, int ep) noexcept {
         Callback ml[100];
         int count = 0;
         genMoves<status, depth>(brd, ep, ml, count);
+        int cur = c;
         for (int i = 0; i < count; i++) {
+            if(depth == gd && count_succ) {
+                std::cout << (int)ml[i].from << " " << (int)ml[i].to << std::endl;
+            }
             ml[i].move(brd, ml[i].from, ml[i].to);
         }
-        if constexpr (depth == 5) {
+        if constexpr (depth == gd-1 && count_succ) {
+            std::cout << c-cur << std::endl;
+        }
+        if constexpr (depth == gd) {
             std::cout << c << std::endl;
         }
     }
@@ -219,7 +363,7 @@ constexpr inline void promoteCapture(const Board &brd, int from,
 
 template <class BoardState status, int depth>
 constexpr inline void EP(const Board &brd, int from, int to) noexcept {
-    Board newBoard = brd.move<BoardPiece::Pawn, status.IsWhite, status.WLC,
+    Board newBoard = brd.EP<BoardPiece::Pawn, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
     perft<status.pawn(), depth - 1>(newBoard, 0);
 }

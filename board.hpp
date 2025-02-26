@@ -245,11 +245,11 @@ struct Board {
         const uint64_t mov = from | to;
         if constexpr (IsWhite) {
             const uint64_t remove = 1ULL << (moveTo - 8);
-            return Board(bp & remove, bn, bb, br, bq, bk, wp ^ mov, wn, wb, wr, 
+            return Board(bp ^ remove, bn, bb, br, bq, bk, wp ^ mov, wn, wb, wr, 
                          wq, wk);
         } else {
             const uint64_t remove = 1ULL << (moveTo + 8);
-            return Board(bp ^ mov, bn, bb, br, bq, bk, wp & remove, wn, 
+            return Board(bp ^ mov, bn, bb, br, bq, bk, wp ^ remove, wn, 
                          wb, wr, wq, wk);
         }
     }
@@ -443,7 +443,7 @@ inline constexpr int parseEnPassantSquare(const char *FEN) {
     }
     char file = FEN[space3 + 1];
     char rank = FEN[space3 + 2];
-    return (file - 'a') + 8 * (rank - '1');
+    return (7 - (file - 'a')) + 8 * (rank - '1');
 }
 
 inline constexpr BoardState parseBoardState(const char *fenCStr) {

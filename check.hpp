@@ -100,7 +100,7 @@ _fast static void slidingPieceCheckmask(const Board &brd, uint64_t &pinHV,
 
 template <bool IsWhite>
 _fast void generateKingBan(const Board &brd, uint64_t &kingBan) noexcept {
-    uint64_t pawns, queens, bishops, rooks, knights;
+    uint64_t pawns, queens, bishops, rooks, knights, kingMask;
     int kingPos;
     if constexpr (IsWhite) {
         pawns = brd.BPawn;
@@ -108,6 +108,7 @@ _fast void generateKingBan(const Board &brd, uint64_t &kingBan) noexcept {
         bishops = brd.BBishop;
         rooks = brd.BRook;
         knights = brd.BKnight;
+        kingMask = brd.WKing;
         kingPos = __builtin_ctzll(brd.BKing);
     } else {
         pawns = brd.WPawn;
@@ -115,17 +116,18 @@ _fast void generateKingBan(const Board &brd, uint64_t &kingBan) noexcept {
         bishops = brd.WBishop;
         rooks = brd.WRook;
         knights = brd.WKnight;
+        kingMask = brd.BKing;
         kingPos = __builtin_ctzll(brd.WKing);
     }
     kingBan |= kingMasks[kingPos];
     kingBan |= pawnCouldAttackLeft<!IsWhite>(pawns);
     kingBan |= pawnCouldAttackRight<!IsWhite>(pawns);
     Bitloop(knights) { kingBan |= knightMasks[__builtin_ctzll(knights)]; }
-    Bitloop(queens) { kingBan |= getQmagic(__builtin_ctzll(queens), brd.Occ); }
+    Bitloop(queens) { kingBan |= getQmagic(__builtin_ctzll(queens), brd.Occ^kingMask); }
     Bitloop(bishops) {
-        kingBan |= getBmagic(__builtin_ctzll(bishops), brd.Occ);
+        kingBan |= getBmagic(__builtin_ctzll(bishops), brd.Occ^kingMask);
     }
-    Bitloop(rooks) { kingBan |= getRmagic(__builtin_ctzll(rooks), brd.Occ); }
+    Bitloop(rooks) { kingBan |= getRmagic(__builtin_ctzll(rooks), brd.Occ^kingMask); }
 }
 
 template <bool IsWhite>

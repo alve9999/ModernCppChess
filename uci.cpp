@@ -6,11 +6,10 @@
 #include <stdlib.h> 
 #include "movegen.hpp"
 #include "move.hpp"
-/*
-bool white = false;
-Board* brd = new Board(loadFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
 
-void proccessCommand(std::string str){
+bool white = false;
+/*
+void proccessCommand(std::string str, Board* brd, BoardState* state){
     std::vector<std::string> tokens;
     std::stringstream ss(str);
     std::string token;
@@ -23,14 +22,15 @@ void proccessCommand(std::string str){
     }
     if(tokens[0] == "position"){
         if(tokens.back()!="startpos"){
-            Move move;
+            MoveCallbacks move;
             if(white){
-	            move = algebraicToMove<true>(tokens.back(),*brd);
+	            move = algebraicToMove<true>(tokens.back(),*brd,*state,ep);
             }
             else{
-                move = algebraicToMove<false>(tokens.back(),*brd);
+                move = algebraicToMove<false>(tokens.back(),*brd,*state,ep);
             }
-            brd = new Board(makeMoveCall(*brd,move,brd->state.IsWhite,brd->state.EP,brd->state.WLC,brd->state.WRC,brd->state.BLC,brd->state.BRC));
+            *brd = move.boardCallback();
+            *state = move.stateCallback();
         }
         else{
             white = true;
@@ -44,32 +44,19 @@ void proccessCommand(std::string str){
     } 
     else if (tokens[0] == "go") {
         //calculate next move
-        Move m;
-        std::string promotion = "";
-        if(m.special == 8 || m.special == 12){
-            promotion = "n";
-        }
-        if(m.special == 9 || m.special == 13){
-            promotion = "b";
-        }
-        if(m.special == 10 || m.special == 14){
-            promotion = "r";
-        }
-        if(m.special == 11 || m.special == 15){
-            promotion = "q";
-        }
 
-        std::cout <<"bestmove "<< m.toAlgebraic() << promotion << std::endl;
     }
 }
 
 void uciRunGame(){
+    Board brd = loadFenBoard("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ");
+    BoardState state = parseBoardState("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ");
     while(1){
         if (std::cin.peek() != EOF) {
 	        std::string str;
 	        std::getline(std::cin, str);
-	        proccessCommand(str);
+	        proccessCommand(str, &brd, &state);
         }
     }
-}
-*/
+}*/
+
