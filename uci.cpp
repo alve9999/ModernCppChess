@@ -6,10 +6,10 @@
 #include <stdlib.h> 
 #include "movegen.hpp"
 #include "move.hpp"
-
+#include <memory>
 bool white = false;
-/*
-void proccessCommand(std::string str, Board* brd, BoardState* state){
+
+void proccessCommand(std::string str, std::unique_ptr<Board>& brd, std::unique_ptr<BoardState>& state){
     std::vector<std::string> tokens;
     std::stringstream ss(str);
     std::string token;
@@ -22,6 +22,7 @@ void proccessCommand(std::string str, Board* brd, BoardState* state){
     }
     if(tokens[0] == "position"){
         if(tokens.back()!="startpos"){
+            int ep = 0;
             MoveCallbacks move;
             if(white){
 	            move = algebraicToMove<true>(tokens.back(),*brd,*state,ep);
@@ -29,8 +30,9 @@ void proccessCommand(std::string str, Board* brd, BoardState* state){
             else{
                 move = algebraicToMove<false>(tokens.back(),*brd,*state,ep);
             }
-            *brd = move.boardCallback();
-            *state = move.stateCallback();
+            brd.reset(new Board(move.boardCallback()));
+            state.reset(new BoardState(move.stateCallback()));
+
         }
         else{
             white = true;
@@ -44,19 +46,32 @@ void proccessCommand(std::string str, Board* brd, BoardState* state){
     } 
     else if (tokens[0] == "go") {
         //calculate next move
+        Callback ml[100];
+        int count = 0;
+        bool whiteTurn   = state->IsWhite;
+        bool enPassant   = state->EP;
+        bool whiteLeft   = state->WLC;
+        bool whiteRight  = state->WRC;
+        bool blackLeft   = state->BLC;
+        bool blackRight  = state->BRC;
+
+        moveGenCall(*brd, 0, ml, count,whiteTurn, enPassant, whiteLeft, whiteRight, blackLeft, blackRight);
+        srand((unsigned) time(NULL));
+        int random = rand() % count;
+        ml[random].move(*brd, ml[random].from, ml[random].to);
 
     }
 }
 
 void uciRunGame(){
-    Board brd = loadFenBoard("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ");
-    BoardState state = parseBoardState("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ");
+    auto brd = std::make_unique<Board>(loadFenBoard("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 "));
+    auto state = std::make_unique<BoardState>(parseBoardState("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 "));
     while(1){
         if (std::cin.peek() != EOF) {
 	        std::string str;
 	        std::getline(std::cin, str);
-	        proccessCommand(str, &brd, &state);
+	        proccessCommand(str, brd, state);
         }
     }
-}*/
+}
 

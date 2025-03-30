@@ -181,14 +181,53 @@ _fast MoveCallbacks algebraicToMove(std::string &alg, const Board &brd,
         }
 
         if (capture) {
-            boardCallback = [&brd, promotePiece, from, to]() {
-                return brd.template promoteCapture<promotePiece,IsWhite,false,false,false,false>(from, to);
-            };
-        } 
-        else {
-            boardCallback = [&brd, promotePiece, from, to]() {
-                return brd.template promote<promotePiece,IsWhite,false,false,false,false>(from, to);
-            };
+            switch (promotePiece) {
+                case BoardPiece::Knight:
+                    boardCallback = [&brd, from, to]() {
+                        return brd.template promoteCapture<BoardPiece::Knight, IsWhite, false, false, false, false>(from, to);
+                    };
+                    break;
+                case BoardPiece::Bishop:
+                    boardCallback = [&brd, from, to]() {
+                        return brd.template promoteCapture<BoardPiece::Bishop, IsWhite, false, false, false, false>(from, to);
+                    };
+                    break;
+                case BoardPiece::Rook:
+                    boardCallback = [&brd, from, to]() {
+                        return brd.template promoteCapture<BoardPiece::Rook, IsWhite, false, false, false, false>(from, to);
+                    };
+                    break;
+                case BoardPiece::Queen:
+                default:
+                    boardCallback = [&brd, from, to]() {
+                        return brd.template promoteCapture<BoardPiece::Queen, IsWhite, false, false, false, false>(from, to);
+                    };
+                    break;
+            }
+        } else {
+            switch (promotePiece) {
+                case BoardPiece::Knight:
+                    boardCallback = [&brd, from, to]() {
+                        return brd.template promote<BoardPiece::Knight, IsWhite, false, false, false, false>(from, to);
+                    };
+                    break;
+                case BoardPiece::Bishop:
+                    boardCallback = [&brd, from, to]() {
+                        return brd.template promote<BoardPiece::Bishop, IsWhite, false, false, false, false>(from, to);
+                    };
+                    break;
+                case BoardPiece::Rook:
+                    boardCallback = [&brd, from, to]() {
+                        return brd.template promote<BoardPiece::Rook, IsWhite, false, false, false, false>(from, to);
+                    };
+                    break;
+                case BoardPiece::Queen:
+                default:
+                    boardCallback = [&brd, from, to]() {
+                        return brd.template promote<BoardPiece::Queen, IsWhite, false, false, false, false>(from, to);
+                    };
+                    break;
+            }
         }
     }
     else if (capture) {
@@ -269,11 +308,12 @@ struct Callback {
     uint8_t from;
     uint8_t to;
 };
-constexpr const int gd = 7;
+constexpr const int gd = 8;
 constexpr const bool count_succ = false;
 template <class BoardState status, int depth>
 constexpr inline void perft(const Board &brd, int ep) noexcept {
     if constexpr (depth == 0) {
+        volatile int a = eval<status.IsWhite>(brd);
         c++;
         return;
     } else {
