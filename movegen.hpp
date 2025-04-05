@@ -352,18 +352,17 @@ _fast void castels(const Board &brd, uint64_t kingBan, Callback *ml,
         if constexpr (status.BLC) {
             if ((!(BNotOccupiedL & brd.Occ)) && (!(BNotAttackedL & kingBan)) &&
                 (brd.BRook & BRookL)) {
-                moveHandler(leftCastel<status, depth>, ml, count, 60, 58);
+                moveHandler(leftCastel<status, depth>, ml, count, 61, 58);
             }
         }
         if constexpr (status.BRC) {
             if ((!(BNotOccupiedR & brd.Occ)) && (!(BNotAttackedR & kingBan)) &&
                 (brd.BRook & BRookR)) {
-                moveHandler(rightCastel<status, depth>, ml, count, 60, 62);
+                moveHandler(rightCastel<status, depth>, ml, count, 61, 62);
             }
         }
     }
 }
-
 
 template <class BoardState status, int depth>
 _fast void EPMoves(const Board &brd, int ep, Callback *ml, int &count,
@@ -404,9 +403,9 @@ _fast void genMoves(const Board &brd, int ep, Callback *ml,
     }
     int kingPos = __builtin_ctzll(king);
     uint64_t checkmask = ONES;
-    uint64_t pinHV = 0;
-    uint64_t pinD = 0;
-    uint64_t kingBan = 0;
+    uint64_t pinHV = 1;
+    uint64_t pinD = 1;
+    uint64_t kingBan = 1;
     generateCheck<status.IsWhite>(brd, kingPos, pinHV, pinD, checkmask,
                                   kingBan);
     pawnMoves<status, depth>(brd, checkmask, pinHV, pinD, ml, count);
@@ -423,4 +422,356 @@ _fast void genMoves(const Board &brd, int ep, Callback *ml,
     }
 }
 
-
+_fast void moveGenCall(const Board &brd, int ep, Callback *ml, int &count,
+                       bool WH, bool EP, bool WL, bool WR, bool BL,
+                       bool BR) noexcept {
+    if (WH) {
+        if (EP) {
+            if (WL) {
+                if (WR) {
+                    if (BL) {
+                        if (BR)
+                            genMoves<BoardState{true, true, true, true, true,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{true, true, true, true, true,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    } else {
+                        if (BR)
+                            genMoves<BoardState{true, true, true, true, false,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{true, true, true, true, false,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    }
+                } else {
+                    if (BL) {
+                        if (BR)
+                            genMoves<BoardState{true, true, true, false, true,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{true, true, true, false, true,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    } else {
+                        if (BR)
+                            genMoves<BoardState{true, true, true, false, false,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{true, true, true, false, false,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    }
+                }
+            } else {
+                if (WR) {
+                    if (BL) {
+                        if (BR)
+                            genMoves<BoardState{true, true, false, true, true,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{true, true, false, true, true,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    } else {
+                        if (BR)
+                            genMoves<BoardState{true, true, false, true, false,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{true, true, false, true, false,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    }
+                } else {
+                    if (BL) {
+                        if (BR)
+                            genMoves<BoardState{true, true, false, false, true,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{true, true, false, false, true,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    } else {
+                        if (BR)
+                            genMoves<BoardState{true, true, false, false, false,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{true, true, false, false, false,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    }
+                }
+            }
+        } else {
+            if (WL) {
+                if (WR) {
+                    if (BL) {
+                        if (BR)
+                            genMoves<BoardState{true, false, true, true, true,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{true, false, true, true, true,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    } else {
+                        if (BR)
+                            genMoves<BoardState{true, false, true, true, false,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{true, false, true, true, false,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    }
+                } else {
+                    if (BL) {
+                        if (BR)
+                            genMoves<BoardState{true, false, true, false, true,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{true, false, true, false, true,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    } else {
+                        if (BR)
+                            genMoves<BoardState{true, false, true, false, false,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{true, false, true, false, false,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    }
+                }
+            } else {
+                if (WR) {
+                    if (BL) {
+                        if (BR)
+                            genMoves<BoardState{true, false, false, true, true,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{true, false, false, true, true,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    } else {
+                        if (BR)
+                            genMoves<BoardState{true, false, false, true, false,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{true, false, false, true, false,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    }
+                } else {
+                    if (BL) {
+                        if (BR)
+                            genMoves<BoardState{true, false, false, false, true,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{true, false, false, false, true,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    } else {
+                        if (BR)
+                            genMoves<BoardState{true, false, false, false,
+                                                false, true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{true, false, false, false,
+                                                false, false},
+                                     1>(brd, ep, ml, count);
+                    }
+                }
+            }
+        }
+    } else {
+        if (EP) {
+            if (WL) {
+                if (WR) {
+                    if (BL) {
+                        if (BR)
+                            genMoves<BoardState{false, true, true, true, true,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{false, true, true, true, true,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    } else {
+                        if (BR)
+                            genMoves<BoardState{false, true, true, true, false,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{false, true, true, true, false,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    }
+                } else {
+                    if (BL) {
+                        if (BR)
+                            genMoves<BoardState{false, true, true, false, true,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{false, true, true, false, true,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    } else {
+                        if (BR)
+                            genMoves<BoardState{false, true, true, false, false,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{false, true, true, false, false,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    }
+                }
+            } else {
+                if (WR) {
+                    if (BL) {
+                        if (BR)
+                            genMoves<BoardState{false, true, false, true, true,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{false, true, false, true, true,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    } else {
+                        if (BR)
+                            genMoves<BoardState{false, true, false, true, false,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{false, true, false, true, false,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    }
+                } else {
+                    if (BL) {
+                        if (BR)
+                            genMoves<BoardState{false, true, false, false, true,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{false, true, false, false, true,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    } else {
+                        if (BR)
+                            genMoves<BoardState{false, true, false, false,
+                                                false, true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{false, true, false, false,
+                                                false, false},
+                                     1>(brd, ep, ml, count);
+                    }
+                }
+            }
+        } else {
+            if (WL) {
+                if (WR) {
+                    if (BL) {
+                        if (BR)
+                            genMoves<BoardState{false, false, true, true, true,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{false, false, true, true, true,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    } else {
+                        if (BR)
+                            genMoves<BoardState{false, false, true, true, false,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{false, false, true, true, false,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    }
+                } else {
+                    if (BL) {
+                        if (BR)
+                            genMoves<BoardState{false, false, true, false, true,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{false, false, true, false, true,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    } else {
+                        if (BR)
+                            genMoves<BoardState{false, false, true, false,
+                                                false, true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{false, false, true, false,
+                                                false, false},
+                                     1>(brd, ep, ml, count);
+                    }
+                }
+            } else {
+                if (WR) {
+                    if (BL) {
+                        if (BR)
+                            genMoves<BoardState{false, false, false, true, true,
+                                                true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{false, false, false, true, true,
+                                                false},
+                                     1>(brd, ep, ml, count);
+                    } else {
+                        if (BR)
+                            genMoves<BoardState{false, false, false, true,
+                                                false, true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{false, false, false, true,
+                                                false, false},
+                                     1>(brd, ep, ml, count);
+                    }
+                } else {
+                    if (BL) {
+                        if (BR)
+                            genMoves<BoardState{false, false, false, false,
+                                                true, true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{false, false, false, false,
+                                                true, false},
+                                     1>(brd, ep, ml, count);
+                    } else {
+                        if (BR)
+                            genMoves<BoardState{false, false, false, false,
+                                                false, true},
+                                     1>(brd, ep, ml, count);
+                        else
+                            genMoves<BoardState{false, false, false, false,
+                                                false, false},
+                                     1>(brd, ep, ml, count);
+                    }
+                }
+            }
+        }
+    }
+}

@@ -2,11 +2,12 @@
 #include "MoveList.hpp"
 #include "board.hpp"
 #include "constants.hpp"
+#include "eval.hpp"
 #include "move.hpp"
 #include <cstdint>
+#include <functional>
 #include <sys/types.h>
 #include <utility>
-#include <functional>
 
 inline std::ostream &operator<<(std::ostream &os, const Move &m) {
     os << "From: " << static_cast<int>(m.from)
@@ -29,7 +30,7 @@ struct MoveCallbacks {
 
 template <bool IsWhite>
 _fast MoveCallbacks algebraicToMove(std::string &alg, const Board &brd,
-                         const BoardState state, int ep) {
+                                    const BoardState state, int ep) {
     uint8_t from = algToCoord(alg.substr(0, 2));
     uint8_t to = algToCoord(alg.substr(2, 4));
     BoardPiece type = BoardPiece::Pawn;
@@ -45,48 +46,38 @@ _fast MoveCallbacks algebraicToMove(std::string &alg, const Board &brd,
             if (abs(from - to) == 16) {
                 special = 1; // pawn double move
             }
-            if (to / 8 == 7) { 
+            if (to / 8 == 7) {
                 std::string s = alg.length() > 4 ? alg.substr(4, 5) : "";
                 if (s == "n") {
                     special += 8; // promote to knight
-                }
-                else if (s == "b") {
+                } else if (s == "b") {
                     special += 9; // promote to bishop
-                }
-                else if (s == "r") {
+                } else if (s == "r") {
                     special += 10; // promote to rook
-                }
-                else if (s == "q" || s.empty()) {
-                    special += 11; // promote to queen 
+                } else if (s == "q" || s.empty()) {
+                    special += 11; // promote to queen
                 }
             }
-        }
-        else if (ISSET(brd.WKnight, from)) {
+        } else if (ISSET(brd.WKnight, from)) {
             type = BoardPiece::Knight;
-        }
-        else if (ISSET(brd.WBishop, from)) {
+        } else if (ISSET(brd.WBishop, from)) {
             type = BoardPiece::Bishop;
-        }
-        else if (ISSET(brd.WRook, from)) {
+        } else if (ISSET(brd.WRook, from)) {
             type = BoardPiece::Rook;
-            if (from == 0) { // a1 - queenside rook
-                special = 4; // track left rook move
+            if (from == 0) {        // a1 - queenside rook
+                special = 4;        // track left rook move
+            } else if (from == 7) { // h1 - kingside rook
+                special = 5;        // track right rook move
             }
-            else if (from == 7) { // h1 - kingside rook
-                special = 5; // track right rook move
-            }
-        }
-        else if (ISSET(brd.WQueen, from)) {
+        } else if (ISSET(brd.WQueen, from)) {
             type = BoardPiece::Queen;
-        }
-        else if (ISSET(brd.WKing, from)) {
+        } else if (ISSET(brd.WKing, from)) {
             type = BoardPiece::King;
             if (abs(from - to) == 2) {
                 special = 2; // castling
             }
         }
-    } 
-    else { // Black pieces
+    } else { // Black pieces
         if (ISSET(brd.BPawn, from)) {
             type = BoardPiece::Pawn;
             if (to == ep) {
@@ -99,44 +90,35 @@ _fast MoveCallbacks algebraicToMove(std::string &alg, const Board &brd,
                 std::string s = alg.length() > 4 ? alg.substr(4, 5) : "";
                 if (s == "n") {
                     special += 8; // promote to knight
-                }
-                else if (s == "b") {
+                } else if (s == "b") {
                     special += 9; // promote to bishop
-                }
-                else if (s == "r") {
+                } else if (s == "r") {
                     special += 10; // promote to rook
-                }
-                else if (s == "q" || s.empty()) {
+                } else if (s == "q" || s.empty()) {
                     special += 11; // promote to queen (default)
                 }
             }
-        }
-        else if (ISSET(brd.BKnight, from)) {
+        } else if (ISSET(brd.BKnight, from)) {
             type = BoardPiece::Knight;
-        }
-        else if (ISSET(brd.BBishop, from)) {
+        } else if (ISSET(brd.BBishop, from)) {
             type = BoardPiece::Bishop;
-        }
-        else if (ISSET(brd.BRook, from)) {
+        } else if (ISSET(brd.BRook, from)) {
             type = BoardPiece::Rook;
-            if (from == 56) { // a8 - queenside rook
-                special = 4; // track left rook move
+            if (from == 56) {        // a8 - queenside rook
+                special = 4;         // track left rook move
+            } else if (from == 63) { // h8 - kingside rook
+                special = 5;         // track right rook move
             }
-            else if (from == 63) { // h8 - kingside rook
-                special = 5; // track right rook move
-            }
-        }
-        else if (ISSET(brd.BQueen, from)) {
+        } else if (ISSET(brd.BQueen, from)) {
             type = BoardPiece::Queen;
-        }
-        else if (ISSET(brd.BKing, from)) {
+        } else if (ISSET(brd.BKing, from)) {
             type = BoardPiece::King;
             if (abs(from - to) == 2) {
                 special = 2; // castling
             }
         }
     }
-    
+
     std::function<Board()> boardCallback;
     std::function<BoardState()> stateCallback;
 
@@ -144,156 +126,185 @@ _fast MoveCallbacks algebraicToMove(std::string &alg, const Board &brd,
         if constexpr (IsWhite) {
             if (to > from) { // King-side castling
                 boardCallback = [&brd]() {
-                    return brd.template castle<BoardPiece::King, true, false, true, false, false>();
+                    return brd.template castle<BoardPiece::King, true, false,
+                                               true, false, false>();
                 };
             } else { // Queen-side castling
                 boardCallback = [&brd]() {
-                    return brd.template castle<BoardPiece::King, true, true, false, false, false>();
+                    return brd.template castle<BoardPiece::King, true, true,
+                                               false, false, false>();
                 };
             }
         } else {
             if (to > from) { // King-side castling
                 boardCallback = [&brd]() {
-                    return brd.template castle<BoardPiece::King, false, false, false, false, true>();
+                    return brd.template castle<BoardPiece::King, false, false,
+                                               false, false, true>();
                 };
             } else { // Queen-side castling
                 boardCallback = [&brd]() {
-                    return brd.template castle<BoardPiece::King, false, false, false, true, false>();
+                    return brd.template castle<BoardPiece::King, false, false,
+                                               false, true, false>();
                 };
             }
         }
     } else if (special == 3) { // En Passant
         boardCallback = [&brd, from, to]() {
             if constexpr (IsWhite) {
-                return brd.template EP<BoardPiece::Pawn, true, false, false, false, false>(from, to);
+                return brd.template EP<BoardPiece::Pawn, true, false, false,
+                                       false, false>(from, to);
             } else {
-                return brd.template EP<BoardPiece::Pawn, false, false, false, false, false>(from, to);
+                return brd.template EP<BoardPiece::Pawn, false, false, false,
+                                       false, false>(from, to);
             }
         };
-    }
-    else if (special >= 8 && special <= 11) { // Promotion
+    } else if (special >= 8 && special <= 11) { // Promotion
         BoardPiece promotePiece;
         switch (special) {
-            case 8: promotePiece = BoardPiece::Knight; break;
-            case 9: promotePiece = BoardPiece::Bishop; break;
-            case 10: promotePiece = BoardPiece::Rook; break;
-            default: promotePiece = BoardPiece::Queen; break;
+        case 8:
+            promotePiece = BoardPiece::Knight;
+            break;
+        case 9:
+            promotePiece = BoardPiece::Bishop;
+            break;
+        case 10:
+            promotePiece = BoardPiece::Rook;
+            break;
+        default:
+            promotePiece = BoardPiece::Queen;
+            break;
         }
 
         if (capture) {
             switch (promotePiece) {
-                case BoardPiece::Knight:
-                    boardCallback = [&brd, from, to]() {
-                        return brd.template promoteCapture<BoardPiece::Knight, IsWhite, false, false, false, false>(from, to);
-                    };
-                    break;
-                case BoardPiece::Bishop:
-                    boardCallback = [&brd, from, to]() {
-                        return brd.template promoteCapture<BoardPiece::Bishop, IsWhite, false, false, false, false>(from, to);
-                    };
-                    break;
-                case BoardPiece::Rook:
-                    boardCallback = [&brd, from, to]() {
-                        return brd.template promoteCapture<BoardPiece::Rook, IsWhite, false, false, false, false>(from, to);
-                    };
-                    break;
-                case BoardPiece::Queen:
-                default:
-                    boardCallback = [&brd, from, to]() {
-                        return brd.template promoteCapture<BoardPiece::Queen, IsWhite, false, false, false, false>(from, to);
-                    };
-                    break;
+            case BoardPiece::Knight:
+                boardCallback = [&brd, from, to]() {
+                    return brd
+                        .template promoteCapture<BoardPiece::Knight, IsWhite,
+                                                 false, false, false, false>(
+                            from, to);
+                };
+                break;
+            case BoardPiece::Bishop:
+                boardCallback = [&brd, from, to]() {
+                    return brd
+                        .template promoteCapture<BoardPiece::Bishop, IsWhite,
+                                                 false, false, false, false>(
+                            from, to);
+                };
+                break;
+            case BoardPiece::Rook:
+                boardCallback = [&brd, from, to]() {
+                    return brd.template promoteCapture<
+                        BoardPiece::Rook, IsWhite, false, false, false, false>(
+                        from, to);
+                };
+                break;
+            case BoardPiece::Queen:
+            default:
+                boardCallback = [&brd, from, to]() {
+                    return brd.template promoteCapture<
+                        BoardPiece::Queen, IsWhite, false, false, false, false>(
+                        from, to);
+                };
+                break;
             }
         } else {
             switch (promotePiece) {
-                case BoardPiece::Knight:
-                    boardCallback = [&brd, from, to]() {
-                        return brd.template promote<BoardPiece::Knight, IsWhite, false, false, false, false>(from, to);
-                    };
-                    break;
-                case BoardPiece::Bishop:
-                    boardCallback = [&brd, from, to]() {
-                        return brd.template promote<BoardPiece::Bishop, IsWhite, false, false, false, false>(from, to);
-                    };
-                    break;
-                case BoardPiece::Rook:
-                    boardCallback = [&brd, from, to]() {
-                        return brd.template promote<BoardPiece::Rook, IsWhite, false, false, false, false>(from, to);
-                    };
-                    break;
-                case BoardPiece::Queen:
-                default:
-                    boardCallback = [&brd, from, to]() {
-                        return brd.template promote<BoardPiece::Queen, IsWhite, false, false, false, false>(from, to);
-                    };
-                    break;
+            case BoardPiece::Knight:
+                boardCallback = [&brd, from, to]() {
+                    return brd.template promote<BoardPiece::Knight, IsWhite,
+                                                false, false, false, false>(
+                        from, to);
+                };
+                break;
+            case BoardPiece::Bishop:
+                boardCallback = [&brd, from, to]() {
+                    return brd.template promote<BoardPiece::Bishop, IsWhite,
+                                                false, false, false, false>(
+                        from, to);
+                };
+                break;
+            case BoardPiece::Rook:
+                boardCallback = [&brd, from, to]() {
+                    return brd.template promote<BoardPiece::Rook, IsWhite,
+                                                false, false, false, false>(
+                        from, to);
+                };
+                break;
+            case BoardPiece::Queen:
+            default:
+                boardCallback = [&brd, from, to]() {
+                    return brd.template promote<BoardPiece::Queen, IsWhite,
+                                                false, false, false, false>(
+                        from, to);
+                };
+                break;
             }
         }
-    }
-    else if (capture) {
+    } else if (capture) {
         boardCallback = [&brd, type, from, to]() {
             switch (type) {
-                case BoardPiece::Pawn:
-                    return brd.template capture<BoardPiece::Pawn, IsWhite, false, false, false, false>(from, to);
-                case BoardPiece::Knight:
-                    return brd.template capture<BoardPiece::Knight, IsWhite, false, false, false, false>(from, to);
-                case BoardPiece::Bishop:
-                    return brd.template capture<BoardPiece::Bishop, IsWhite, false, false, false, false>(from, to);
-                case BoardPiece::Rook:
-                    return brd.template capture<BoardPiece::Rook, IsWhite, false, false, false, false>(from, to);
-                case BoardPiece::Queen:
-                    return brd.template capture<BoardPiece::Queen, IsWhite, false, false, false, false>(from, to);
-                case BoardPiece::King:
-                    return brd.template capture<BoardPiece::King, IsWhite, false, false, false, false>(from, to);
-                default:
-                    return brd; 
+            case BoardPiece::Pawn:
+                return brd.template capture<BoardPiece::Pawn, IsWhite, false,
+                                            false, false, false>(from, to);
+            case BoardPiece::Knight:
+                return brd.template capture<BoardPiece::Knight, IsWhite, false,
+                                            false, false, false>(from, to);
+            case BoardPiece::Bishop:
+                return brd.template capture<BoardPiece::Bishop, IsWhite, false,
+                                            false, false, false>(from, to);
+            case BoardPiece::Rook:
+                return brd.template capture<BoardPiece::Rook, IsWhite, false,
+                                            false, false, false>(from, to);
+            case BoardPiece::Queen:
+                return brd.template capture<BoardPiece::Queen, IsWhite, false,
+                                            false, false, false>(from, to);
+            case BoardPiece::King:
+                return brd.template capture<BoardPiece::King, IsWhite, false,
+                                            false, false, false>(from, to);
+            default:
+                return brd;
             }
-        };
-    } 
-    else { 
-        boardCallback = [&brd, type, from, to]() {
-            switch (type) {
-                case BoardPiece::Pawn:
-                    return brd.template move<BoardPiece::Pawn, IsWhite, false, false, false, false>(from, to);
-                case BoardPiece::Knight:
-                    return brd.template move<BoardPiece::Knight, IsWhite, false, false, false, false>(from, to);
-                case BoardPiece::Bishop:
-                    return brd.template move<BoardPiece::Bishop, IsWhite, false, false, false, false>(from, to);
-                case BoardPiece::Rook:
-                    return brd.template move<BoardPiece::Rook, IsWhite, false, false, false, false>(from, to);
-                case BoardPiece::Queen:
-                    return brd.template move<BoardPiece::Queen, IsWhite, false, false, false, false>(from, to);
-                case BoardPiece::King:
-                    return brd.template move<BoardPiece::King, IsWhite, false, false, false, false>(from, to);
-                default:
-                    return brd;
-            }
-        };
-    }
-    if (special == 1) { 
-        stateCallback = [&state]() {
-            return state.pawn();
-        };
-    } else if (special == 2) { 
-        stateCallback = [&state]() {
-            return state.king();
-        };
-    } else if (special == 4) { 
-        stateCallback = [&state]() {
-            return state.rookMoveLeft();
-        };
-    } else if (special == 5) { 
-        stateCallback = [&state]() {
-            return state.rookMoveRight();
-        };
-    } else if (type == BoardPiece::King) { 
-        stateCallback = [&state]() {
-            return state.king();
         };
     } else {
-        stateCallback = [&state]() {
-            return state.normal();
+        boardCallback = [&brd, type, from, to]() {
+            switch (type) {
+            case BoardPiece::Pawn:
+                return brd.template move<BoardPiece::Pawn, IsWhite, false,
+                                         false, false, false>(from, to);
+            case BoardPiece::Knight:
+                return brd.template move<BoardPiece::Knight, IsWhite, false,
+                                         false, false, false>(from, to);
+            case BoardPiece::Bishop:
+                return brd.template move<BoardPiece::Bishop, IsWhite, false,
+                                         false, false, false>(from, to);
+            case BoardPiece::Rook:
+                return brd.template move<BoardPiece::Rook, IsWhite, false,
+                                         false, false, false>(from, to);
+            case BoardPiece::Queen:
+                return brd.template move<BoardPiece::Queen, IsWhite, false,
+                                         false, false, false>(from, to);
+            case BoardPiece::King:
+                return brd.template move<BoardPiece::King, IsWhite, false,
+                                         false, false, false>(from, to);
+            default:
+                return brd;
+            }
         };
+    }
+    if (special == 1) {
+        stateCallback = [&state]() { return state.pawn(); };
+    } else if (special == 2) {
+        stateCallback = [&state]() { return state.king(); };
+    } else if (special == 4) {
+        stateCallback = [&state]() { return state.rookMoveLeft(); };
+    } else if (special == 5) {
+        stateCallback = [&state]() { return state.rookMoveRight(); };
+    } else if (type == BoardPiece::King) {
+        stateCallback = [&state]() { return state.king(); };
+    } else {
+        stateCallback = [&state]() { return state.normal(); };
     }
 
     return MoveCallbacks{boardCallback, stateCallback};
@@ -322,13 +333,14 @@ constexpr inline void perft(const Board &brd, int ep) noexcept {
         genMoves<status, depth>(brd, ep, ml, count);
         int cur = c;
         for (int i = 0; i < count; i++) {
-            if(depth == gd && count_succ) {
-                std::cout << (int)ml[i].from << " " << (int)ml[i].to << std::endl;
+            if (depth == gd && count_succ) {
+                std::cout << (int)ml[i].from << " " << (int)ml[i].to
+                          << std::endl;
             }
             ml[i].move(brd, ml[i].from, ml[i].to);
         }
-        if constexpr (depth == gd-1 && count_succ) {
-            std::cout << c-cur << std::endl;
+        if constexpr (depth == gd - 1 && count_succ) {
+            std::cout << c - cur << std::endl;
         }
         if constexpr (depth == gd) {
             std::cout << c << std::endl;
@@ -404,7 +416,7 @@ constexpr inline void promoteCapture(const Board &brd, int from,
 template <class BoardState status, int depth>
 constexpr inline void EP(const Board &brd, int from, int to) noexcept {
     Board newBoard = brd.EP<BoardPiece::Pawn, status.IsWhite, status.WLC,
-                              status.WRC, status.BLC, status.BRC>(from, to);
+                            status.WRC, status.BLC, status.BRC>(from, to);
     perft<status.pawn(), depth - 1>(newBoard, 0);
 }
 
