@@ -12,9 +12,11 @@ int main() {
         loadFenBoard(Fen);
     constexpr BoardState state = parseBoardState(Fen);
     constexpr int ep = parseEnPassantSquare(Fen);
+    int score = eval<false>(brd);
+    printf("score: %d\n", score);
     uciRunGame();
     auto start = std::chrono::high_resolution_clock::now();
-    perft<state,7>(brd,ep);
+    //perft<state,7>(brd,ep);
     auto end = std::chrono::high_resolution_clock::now();
     auto duration =
         std::chrono::duration_cast<std::chrono::milliseconds>(end - start);

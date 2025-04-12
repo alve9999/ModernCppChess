@@ -6,8 +6,24 @@
 #include <stdlib.h> 
 #include "movegen.hpp"
 #include "move.hpp"
+#include "ai.hpp"
 #include <memory>
 bool white = false;
+
+std::string convertToUCI(int index) {
+    int row = index / 8;
+    int col = index % 8;
+
+    char file = 'a' + col;
+
+    char rank = '1' + (row); 
+
+    return std::string(1, file) + std::string(1, rank);
+}
+
+std::string convertMoveToUCI(int from, int to) {
+    return convertToUCI(from) + convertToUCI(to);
+}
 
 void proccessCommand(std::string str, std::unique_ptr<Board>& brd, std::unique_ptr<BoardState>& state){
     std::vector<std::string> tokens;
@@ -25,14 +41,13 @@ void proccessCommand(std::string str, std::unique_ptr<Board>& brd, std::unique_p
             int ep = 0;
             MoveCallbacks move;
             if(white){
-	            move = algebraicToMove<true>(tokens.back(),*brd,*state,ep);
+	            move = algebraicToMove<false>(tokens.back(),*brd,*state,ep);
             }
             else{
-                move = algebraicToMove<false>(tokens.back(),*brd,*state,ep);
+                move = algebraicToMove<true>(tokens.back(),*brd,*state,ep);
             }
             brd.reset(new Board(move.boardCallback()));
             state.reset(new BoardState(move.stateCallback()));
-
         }
         else{
             white = true;
@@ -46,19 +61,18 @@ void proccessCommand(std::string str, std::unique_ptr<Board>& brd, std::unique_p
     } 
     else if (tokens[0] == "go") {
         //calculate next move
-        Callback ml[100];
-        int count = 0;
         bool whiteTurn   = state->IsWhite;
         bool enPassant   = state->EP;
         bool whiteLeft   = state->WLC;
         bool whiteRight  = state->WRC;
         bool blackLeft   = state->BLC;
         bool blackRight  = state->BRC;
+        Callback ml = findBestMove<7>(*brd,0,whiteTurn,enPassant,whiteLeft,whiteRight,blackLeft,blackRight);
 
-        moveGenCall(*brd, 0, ml, count,whiteTurn, enPassant, whiteLeft, whiteRight, blackLeft, blackRight);
-        srand((unsigned) time(NULL));
-        int random = rand() % count;
-        ml[random].move(*brd, ml[random].from, ml[random].to);
+        MoveResult moveRes = ml.makeMove(*brd, ml.from, ml.to);
+        brd.reset(new Board(moveRes.board));
+        state.reset(new BoardState(moveRes.state));
+        std::cout << "bestmove " << convertMoveToUCI(ml.from,ml.to)<< std::endl;
 
     }
 }
@@ -70,6 +84,7 @@ void uciRunGame(){
         if (std::cin.peek() != EOF) {
 	        std::string str;
 	        std::getline(std::cin, str);
+            std::cout << str << std::endl;
 	        proccessCommand(str, brd, state);
         }
     }

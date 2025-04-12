@@ -1,6 +1,5 @@
 #pragma once
 #include "constants.hpp"
-#include <immintrin.h> // for _blsr_u64 intrinsic
 #include <iostream>
 #include <stdint.h>
 #include <string>
@@ -8,7 +7,12 @@
 #define _fast                                                                  \
     __attribute__((always_inline)) inline constexpr __attribute__((aligned(32)))
 
-#define Bitloop(X) for (; X; X = _blsr_u64(X))
+#if defined(__BMI__)
+    #include <immintrin.h>
+    #define Bitloop(X) for (; X; X = _blsr_u64(X))
+#else
+    #define Bitloop(X) for (; X; X = (X & (X - 1)))
+#endif
 
 inline void printBitboard(uint64_t bitboard) {
     for (int rank = 7; rank >= 0; rank--) {
@@ -379,51 +383,29 @@ struct Board {
         }
     }
 };
-
-inline static uint64_t FenToBmp(std::string FEN, char p) {
+inline static uint64_t FenToBmp(const std::string &FEN, char p) {
     uint64_t result = 0;
-    int Field = 63;
+    int square = 56;
 
     for (char c : FEN) {
         if (c == ' ')
             break;
-        uint64_t P = 1ull << Field;
-        switch (c) {
-        case '/':
-            Field += 1;
-            break;
-        case '1':
-            break;
-        case '2':
-            Field -= 1;
-            break;
-        case '3':
-            Field -= 2;
-            break;
-        case '4':
-            Field -= 3;
-            break;
-        case '5':
-            Field -= 4;
-            break;
-        case '6':
-            Field -= 5;
-            break;
-        case '7':
-            Field -= 6;
-            break;
-        case '8':
-            Field -= 7;
-            break;
-        default:
-            if (c == p)
-                result |= P;
+        if (c == '/') {
+            square -= 16;
+            continue;
         }
-        Field--;
+
+        if (isdigit(c)) {
+            square += c - '0';
+        } else {
+            if (c == p)
+                result |= (1ull << square);
+            square++;
+        }
     }
+
     return result;
 }
-
 constexpr size_t constexprFind(const char *str, char ch, size_t start = 0) {
     size_t i = start;
     while (str[i] != '\0') {

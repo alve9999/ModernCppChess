@@ -9,19 +9,15 @@
 #include <sys/types.h>
 #include <utility>
 
-inline std::ostream &operator<<(std::ostream &os, const Move &m) {
-    os << "From: " << static_cast<int>(m.from)
-       << " To: " << static_cast<int>(m.to)
-       << " Piece: " << static_cast<int>(m.piece)
-       << " Special: " << static_cast<int>(m.special);
-    return os;
-}
+
+
 
 inline int algToCoord(const std::string &square) {
-    int column = square[0] - 'a';
-    int row = 8 - (square[1] - '0');
-    return (8 * row + column);
+    int file = (square[0] - 'a');
+    int rank = square[1] - '1';
+    return rank * 8 + file;
 }
+
 
 struct MoveCallbacks {
     std::function<Board()> boardCallback;
@@ -33,6 +29,10 @@ _fast MoveCallbacks algebraicToMove(std::string &alg, const Board &brd,
                                     const BoardState state, int ep) {
     uint8_t from = algToCoord(alg.substr(0, 2));
     uint8_t to = algToCoord(alg.substr(2, 4));
+    std::cout << "icnoming move:"<< std::endl;
+    std::cout << "alg: " << alg << std::endl;
+    std::cout << (int)from << "  " << (int)to << std::endl;
+    std::cout << "isWhite: " << IsWhite << std::endl;
     BoardPiece type = BoardPiece::Pawn;
     bool capture = ISSET(brd.Occ, to);
     int special = 0;
@@ -312,17 +312,26 @@ _fast MoveCallbacks algebraicToMove(std::string &alg, const Board &brd,
 
 static long long c = 0;
 
-using MakeMoveFunc = void (*)(const Board &, int, int);
+struct MoveResult {
+    Board board;
+    BoardState state;
+};
+
+using SearchMoveFunc = int (*)(const Board &, int, int,int,int,int);
+using MakeMoveFunc = MoveResult (*)(const Board &, int, int);
 
 struct Callback {
-    MakeMoveFunc move;
+    MakeMoveFunc makeMove;
+    SearchMoveFunc move;
     uint8_t from;
     uint8_t to;
 };
+
+/*
 constexpr const int gd = 8;
 constexpr const bool count_succ = false;
 template <class BoardState status, int depth>
-constexpr inline void perft(const Board &brd, int ep) noexcept {
+constexpr inline int perft(const Board &brd, int ep) noexcept {
     if constexpr (depth == 0) {
         volatile int a = eval<status.IsWhite>(brd);
         c++;
@@ -330,7 +339,7 @@ constexpr inline void perft(const Board &brd, int ep) noexcept {
     } else {
         Callback ml[100];
         int count = 0;
-        genMoves<status, depth>(brd, ep, ml, count);
+        genMoves<status, depth,1>(brd, ep, ml, count);
         int cur = c;
         for (int i = 0; i < count; i++) {
             if (depth == gd && count_succ) {
@@ -346,228 +355,500 @@ constexpr inline void perft(const Board &brd, int ep) noexcept {
             std::cout << c << std::endl;
         }
     }
-}
+    return;
+}*/
 
-template <class BoardState status, int depth>
-constexpr inline void pawnMove(const Board &brd, int from, int to) noexcept {
+template <class BoardState status>
+inline MoveResult makePawnMove(const Board &brd, int from, int to) noexcept {
     Board newBoard = brd.move<BoardPiece::Pawn, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
-    perft<status.normal(), depth - 1>(newBoard, 0);
+    return {newBoard, status.normal()};
 }
 
-template <class BoardState status, int depth>
-constexpr inline void pawnDoubleMove(const Board &brd, int from,
-                                     int to) noexcept {
+template <class BoardState status>
+inline MoveResult makePawnDoubleMove(const Board &brd, int from, int to) noexcept {
     Board newBoard = brd.move<BoardPiece::Pawn, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
-    if constexpr (status.IsWhite) {
-        perft<status.pawn(), depth - 1>(newBoard, to - 8);
-    } else {
-        perft<status.pawn(), depth - 1>(newBoard, to + 8);
-    }
+    return {newBoard, status.pawn()};
 }
 
-template <class BoardState status, int depth>
-constexpr inline void pawnCapture(const Board &brd, int from, int to) noexcept {
+template <class BoardState status>
+inline MoveResult makePawnCapture(const Board &brd, int from, int to) noexcept {
     Board newBoard = brd.capture<BoardPiece::Pawn, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
-    perft<status.normal(), depth - 1>(newBoard, 0);
+    return {newBoard, status.normal()};
 }
 
-template <class BoardState status, int depth>
-constexpr inline void promote(const Board &brd, int from, int to) noexcept {
-    Board newBoard1 = brd.promote<BoardPiece::Queen, status.IsWhite, status.WLC,
+template <class BoardState status>
+inline MoveResult makePromote(const Board &brd, int from, int to) noexcept {
+    Board newBoard = brd.promote<BoardPiece::Queen, status.IsWhite, status.WLC,
                                   status.WRC, status.BLC, status.BRC>(from, to);
-    perft<status.normal(), depth - 1>(newBoard1, 0);
-    Board newBoard2 = brd.promote<BoardPiece::Rook, status.IsWhite, status.WLC,
-                                  status.WRC, status.BLC, status.BRC>(from, to);
-    perft<status.normal(), depth - 1>(newBoard2, 0);
-    Board newBoard3 =
-        brd.promote<BoardPiece::Bishop, status.IsWhite, status.WLC, status.WRC,
-                    status.BLC, status.BRC>(from, to);
-    perft<status.normal(), depth - 1>(newBoard3, 0);
-    Board newBoard4 =
-        brd.promote<BoardPiece::Knight, status.IsWhite, status.WLC, status.WRC,
-                    status.BLC, status.BRC>(from, to);
-    perft<status.normal(), depth - 1>(newBoard4, 0);
+    return {newBoard, status.normal()};
 }
 
-template <class BoardState status, int depth>
-constexpr inline void promoteCapture(const Board &brd, int from,
-                                     int to) noexcept {
-    Board newBoard1 =
-        brd.promoteCapture<BoardPiece::Queen, status.IsWhite, status.WLC,
-                           status.WRC, status.BLC, status.BRC>(from, to);
-    perft<status.normal(), depth - 1>(newBoard1, 0);
-    Board newBoard2 =
-        brd.promoteCapture<BoardPiece::Rook, status.IsWhite, status.WLC,
-                           status.WRC, status.BLC, status.BRC>(from, to);
-    perft<status.normal(), depth - 1>(newBoard2, 0);
-    Board newBoard3 =
-        brd.promoteCapture<BoardPiece::Bishop, status.IsWhite, status.WLC,
-                           status.WRC, status.BLC, status.BRC>(from, to);
-    perft<status.normal(), depth - 1>(newBoard3, 0);
-    Board newBoard4 =
-        brd.promoteCapture<BoardPiece::Knight, status.IsWhite, status.WLC,
-                           status.WRC, status.BLC, status.BRC>(from, to);
-    perft<status.normal(), depth - 1>(newBoard4, 0);
+template <class BoardState status>
+inline MoveResult makePromoteCapture(const Board &brd, int from, int to) noexcept {
+    Board newBoard = brd.promoteCapture<BoardPiece::Queen, status.IsWhite, status.WLC,
+                                         status.WRC, status.BLC, status.BRC>(from, to);
+    return {newBoard, status.normal()};
 }
 
-template <class BoardState status, int depth>
-constexpr inline void EP(const Board &brd, int from, int to) noexcept {
+template <class BoardState status>
+inline MoveResult makeEP(const Board &brd, int from, int to) noexcept {
     Board newBoard = brd.EP<BoardPiece::Pawn, status.IsWhite, status.WLC,
                             status.WRC, status.BLC, status.BRC>(from, to);
-    perft<status.pawn(), depth - 1>(newBoard, 0);
+    return {newBoard, status.pawn()};
 }
 
-template <class BoardState status, int depth>
-constexpr inline void knightMove(const Board &brd, int from, int to) noexcept {
+template <class BoardState status>
+inline MoveResult makeKnightMove(const Board &brd, int from, int to) noexcept {
     Board newBoard = brd.move<BoardPiece::Knight, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
-    perft<status.normal(), depth - 1>(newBoard, 0);
+    return {newBoard, status.normal()};
 }
 
-template <class BoardState status, int depth>
-constexpr inline void knightCapture(const Board &brd, int from,
-                                    int to) noexcept {
+template <class BoardState status>
+inline MoveResult makeKnightCapture(const Board &brd, int from, int to) noexcept {
     Board newBoard = brd.capture<BoardPiece::Knight, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
-    perft<status.normal(), depth - 1>(newBoard, 0);
+    return {newBoard, status.normal()};
 }
 
-template <class BoardState status, int depth>
-constexpr inline void bishopMove(const Board &brd, int from, int to) noexcept {
+template <class BoardState status>
+inline MoveResult makeBishopMove(const Board &brd, int from, int to) noexcept {
     Board newBoard = brd.move<BoardPiece::Bishop, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
-    perft<status.normal(), depth - 1>(newBoard, 0);
+    return {newBoard, status.normal()};
 }
 
-template <class BoardState status, int depth>
-constexpr inline void bishopCapture(const Board &brd, int from, int to) {
+template <class BoardState status>
+inline MoveResult makeBishopCapture(const Board &brd, int from, int to) noexcept {
     Board newBoard = brd.capture<BoardPiece::Bishop, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
-    perft<status.normal(), depth - 1>(newBoard, 0);
+    return {newBoard, status.normal()};
 }
 
-template <class BoardState status, int depth>
-constexpr inline void rookMove(const Board &brd, int from, int to) noexcept {
+template <class BoardState status>
+inline MoveResult makeRookMove(const Board &brd, int from, int to) noexcept {
     Board newBoard = brd.move<BoardPiece::Rook, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
+    
     if constexpr (status.IsWhite) {
         if constexpr (status.WLC) {
             if (from == 0) {
-                perft<status.rookMoveLeft(), depth - 1>(newBoard, 0);
-                return;
+                BoardState newState = status.rookMoveLeft();
+                return {newBoard, newState};
             }
         }
         if constexpr (status.WRC) {
             if (from == 7) {
-                perft<status.rookMoveRight(), depth - 1>(newBoard, 0);
-                return;
+                BoardState newState = status.rookMoveRight();
+                return {newBoard, newState};
             }
         }
     } else {
         if constexpr (status.BLC) {
             if (from == 56) {
-                perft<status.rookMoveLeft(), depth - 1>(newBoard, 0);
-                return;
+                BoardState newState = status.rookMoveLeft();
+                return {newBoard, newState};
             }
         }
         if constexpr (status.BRC) {
             if (from == 63) {
-                perft<status.rookMoveRight(), depth - 1>(newBoard, 0);
-                return;
+                BoardState newState = status.rookMoveRight();
+                return {newBoard, newState};
             }
         }
     }
-    perft<status.normal(), depth - 1>(newBoard, 0);
+
+    BoardState newState = status.normal();
+    return {newBoard, newState};
 }
 
-template <class BoardState status, int depth>
-constexpr inline void rookCapture(const Board &brd, int from, int to) noexcept {
+template <class BoardState status>
+inline MoveResult makeRookCapture(const Board &brd, int from, int to) noexcept {
     Board newBoard = brd.capture<BoardPiece::Rook, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
     if constexpr (status.IsWhite) {
         if constexpr (status.WLC) {
             if (from == 0) {
-                perft<status.rookMoveLeft(), depth - 1>(newBoard, 0);
-                return;
+                BoardState newState = status.rookMoveLeft();
+                return {newBoard, newState};
             }
         }
         if constexpr (status.WRC) {
             if (from == 7) {
-                perft<status.rookMoveRight(), depth - 1>(newBoard, 0);
-                return;
+                BoardState newState = status.rookMoveRight();
+                return {newBoard, newState};
             }
         }
     } else {
         if constexpr (status.BLC) {
             if (from == 56) {
-                perft<status.rookMoveLeft(), depth - 1>(newBoard, 0);
-                return;
+                BoardState newState = status.rookMoveLeft();
+                return {newBoard, newState};
             }
         }
         if constexpr (status.BRC) {
             if (from == 63) {
-                perft<status.rookMoveRight(), depth - 1>(newBoard, 0);
-                return;
+                BoardState newState = status.rookMoveRight();
+                return {newBoard, newState};
             }
         }
     }
-    perft<status.normal(), depth - 1>(newBoard, 0);
+    
+    BoardState newState = status.normal();
+    return {newBoard, newState};
 }
 
-template <class BoardState status, int depth>
-constexpr inline void queenMove(const Board &brd, int from, int to) noexcept {
+template <class BoardState status>
+inline MoveResult makeQueenMove(const Board &brd, int from, int to) noexcept {
     Board newBoard = brd.move<BoardPiece::Queen, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
-    perft<status.normal(), depth - 1>(newBoard, 0);
+    return {newBoard, status.normal()};
 }
 
-template <class BoardState status, int depth>
-constexpr inline void queenCapture(const Board &brd, int from,
-                                   int to) noexcept {
+template <class BoardState status>
+inline MoveResult makeQueenCapture(const Board &brd, int from, int to) noexcept {
     Board newBoard = brd.capture<BoardPiece::Queen, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
-    perft<status.normal(), depth - 1>(newBoard, 0);
+    return {newBoard, status.normal()};
 }
 
-template <class BoardState status, int depth>
-constexpr inline void kingMove(const Board &brd, int from, int to) noexcept {
+template <class BoardState status>
+inline MoveResult makeKingMove(const Board &brd, int from, int to) noexcept {
     Board newBoard = brd.move<BoardPiece::King, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
-    perft<status.king(), depth - 1>(newBoard, 0);
+    return {newBoard, status.king()};
 }
 
-template <class BoardState status, int depth>
-constexpr inline void kingCapture(const Board &brd, int from, int to) noexcept {
+template <class BoardState status>
+inline MoveResult makeKingCapture(const Board &brd, int from, int to) noexcept {
     Board newBoard = brd.capture<BoardPiece::King, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
-    perft<status.king(), depth - 1>(newBoard, 0);
+    return {newBoard, status.king()};
+}
+
+template <class BoardState status>
+inline MoveResult makeLeftCastel(const Board &brd, int from, int to) noexcept {
+    if constexpr (status.IsWhite) {
+        Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, true,
+                                false, false, false>();
+        return {newBoard, status.king()};
+    } else {
+        Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, false,
+                                false, true, false>();
+        return {newBoard, status.king()};
+    }
+}
+
+template <class BoardState status>
+inline MoveResult makeRightCastel(const Board &brd, int from, int to) noexcept {
+    Board newBoard;
+    if constexpr (status.IsWhite) {
+        Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, false,
+                                true, false, false>();
+        return {newBoard, status.king()};
+    } else {
+        Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, false,
+                                false, false, true>();
+        return {newBoard, status.king()};
+    }
+}
+
+//for perft testing
+//#define searchFunc perft
+//for minimax testing
+#define searchFunc minimax
+
+template <bool IsWhite>
+constexpr inline int getCapturePiece(const Board &brd, int to) noexcept {
+    int capturedPiece;
+    if constexpr (IsWhite) {
+        if (brd.BPawn & (1ULL << to)) capturedPiece = 0;
+        else if (brd.BKnight & (1ULL << to)) capturedPiece = 1;
+        else if (brd.BBishop & (1ULL << to)) capturedPiece = 2;
+        else if (brd.BRook & (1ULL << to)) capturedPiece = 3;
+        else if (brd.BQueen & (1ULL << to)) capturedPiece = 4;
+    } else {
+        if (brd.WPawn & (1ULL << to)) capturedPiece = 0;
+        else if (brd.WKnight & (1ULL << to)) capturedPiece = 1;
+        else if (brd.WBishop & (1ULL << to)) capturedPiece = 2;
+        else if (brd.WRook & (1ULL << to)) capturedPiece = 3;
+        else if (brd.WQueen & (1ULL << to)) capturedPiece = 4;
+    }
+    return capturedPiece;
+}
+
+template <bool IsWhite, BoardPiece Piece>
+constexpr inline int calculateMoveScoreDelta(int from, int to) {
+    if constexpr (IsWhite) {
+        return mg_table[static_cast<int>(Piece)][true][to] - mg_table[static_cast<int>(Piece)][true][from];
+    } else {
+        return mg_table[static_cast<int>(Piece)][false][to] - mg_table[static_cast<int>(Piece)][false][from];
+    }
+}
+
+template <bool IsWhite, BoardPiece AttackerPiece>
+constexpr inline int calculateCaptureScoreDelta(int victimPiece,int from, int to) {
+    int delta = 0;
+    
+    if constexpr (IsWhite) {
+        delta += mg_table[static_cast<int>(AttackerPiece)][true][to] - mg_table[static_cast<int>(AttackerPiece)][true][from];
+    } else {
+        delta += mg_table[static_cast<int>(AttackerPiece)][false][to] - mg_table[static_cast<int>(AttackerPiece)][false][from];
+    }
+    
+    if constexpr (IsWhite) {
+        delta += mg_value[victimPiece];
+        delta += mg_table[victimPiece][false][to];
+    } else {
+        delta += mg_value[victimPiece];
+        delta += mg_table[victimPiece][true][to];
+    }
+    
+    return delta;
 }
 
 template <class BoardState status, int depth>
-constexpr inline void leftCastel(const Board &brd, int from, int to) noexcept {
+constexpr inline int pawnMove(const Board &brd, int from, int to, int alpha, int beta, int score) noexcept {
+    Board newBoard = brd.move<BoardPiece::Pawn, status.IsWhite, status.WLC,
+                              status.WRC, status.BLC, status.BRC>(from, to);
+    int delta = calculateMoveScoreDelta<status.IsWhite, BoardPiece::Pawn>(from, to);
+    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+}
+
+template <class BoardState status, int depth>
+constexpr inline int pawnDoubleMove(const Board &brd, int from,
+                                     int to, int alpha, int beta, int score) noexcept {
+    Board newBoard = brd.move<BoardPiece::Pawn, status.IsWhite, status.WLC,
+                              status.WRC, status.BLC, status.BRC>(from, to);
+    int delta = calculateMoveScoreDelta<status.IsWhite, BoardPiece::Pawn>(from, to);
+    if constexpr (status.IsWhite) {
+        return searchFunc<status.pawn(), depth - 1>(newBoard, to - 8, alpha, beta, score+delta);
+    } else {
+        return searchFunc<status.pawn(), depth - 1>(newBoard, to + 8, alpha, beta, score+delta);
+    }
+}
+
+template <class BoardState status, int depth>
+constexpr inline int pawnCapture(const Board &brd, int from, int to, int alpha, int beta, int score) noexcept {
+    Board newBoard = brd.capture<BoardPiece::Pawn, status.IsWhite, status.WLC,
+                                 status.WRC, status.BLC, status.BRC>(from, to);
+    int delta = calculateCaptureScoreDelta<status.IsWhite, BoardPiece::Pawn>(getCapturePiece<status.IsWhite>(brd,to),from, to);
+    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+}
+
+template <class BoardState status, int depth>
+constexpr inline int promote(const Board &brd, int from, int to, int alpha, int beta, int score) noexcept {
+    int delta = 0;
+    Board newBoard1 = brd.promote<BoardPiece::Queen, status.IsWhite, status.WLC,
+                                  status.WRC, status.BLC, status.BRC>(from, to);
+    int val = searchFunc<status.normal(), depth - 1>(newBoard1, 0, alpha, beta, score+delta);
+    return val; 
+    Board newBoard2 = brd.promote<BoardPiece::Rook, status.IsWhite, status.WLC,
+                                  status.WRC, status.BLC, status.BRC>(from, to);
+    int val2 = searchFunc<status.normal(), depth - 1>(newBoard2, 0, alpha, beta, score+delta);
+    
+    Board newBoard3 =
+        brd.promote<BoardPiece::Bishop, status.IsWhite, status.WLC, status.WRC,
+                    status.BLC, status.BRC>(from, to);
+    int val3 = searchFunc<status.normal(), depth - 1>(newBoard3, 0, alpha, beta, score+delta);
+    
+    Board newBoard4 =
+        brd.promote<BoardPiece::Knight, status.IsWhite, status.WLC, status.WRC,
+                    status.BLC, status.BRC>(from, to);
+    int val4 = searchFunc<status.normal(), depth - 1>(newBoard4, 0, alpha, beta, score+delta);
+    
+}
+
+template <class BoardState status, int depth>
+constexpr inline int promoteCapture(const Board &brd, int from,
+                                     int to, int alpha, int beta, int score) noexcept {
+    int delta = 0;
+    Board newBoard1 =
+        brd.promoteCapture<BoardPiece::Queen, status.IsWhite, status.WLC,
+                           status.WRC, status.BLC, status.BRC>(from, to);
+    int val = searchFunc<status.normal(), depth - 1>(newBoard1, 0, alpha, beta, score+delta);
+    return val;
+    Board newBoard2 =
+        brd.promoteCapture<BoardPiece::Rook, status.IsWhite, status.WLC,
+                           status.WRC, status.BLC, status.BRC>(from, to);
+    int val2 = searchFunc<status.normal(), depth - 1>(newBoard2, 0, alpha, beta, score+delta);
+    
+    Board newBoard3 =
+        brd.promoteCapture<BoardPiece::Bishop, status.IsWhite, status.WLC,
+                           status.WRC, status.BLC, status.BRC>(from, to);
+    int val3 = searchFunc<status.normal(), depth - 1>(newBoard3, 0, alpha, beta, score+delta);
+    
+    Board newBoard4 =
+        brd.promoteCapture<BoardPiece::Knight, status.IsWhite, status.WLC,
+                           status.WRC, status.BLC, status.BRC>(from, to);
+    int val4 = searchFunc<status.normal(), depth - 1>(newBoard4, 0, alpha, beta, score+delta);
+    
+}
+
+template <class BoardState status, int depth>
+constexpr inline int EP(const Board &brd, int from, int to, int alpha, int beta, int score) noexcept {
+    Board newBoard = brd.EP<BoardPiece::Pawn, status.IsWhite, status.WLC,
+                            status.WRC, status.BLC, status.BRC>(from, to);
+    int delta = 0;
+    return searchFunc<status.pawn(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+}
+
+template <class BoardState status, int depth>
+constexpr inline int knightMove(const Board &brd, int from, int to, int alpha, int beta, int score) noexcept {
+    Board newBoard = brd.move<BoardPiece::Knight, status.IsWhite, status.WLC,
+                              status.WRC, status.BLC, status.BRC>(from, to);
+    int delta = calculateMoveScoreDelta<status.IsWhite, BoardPiece::Knight>(from, to);
+    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+}
+
+template <class BoardState status, int depth>
+constexpr inline int knightCapture(const Board &brd, int from,
+                                    int to, int alpha, int beta, int score) noexcept {
+    Board newBoard = brd.capture<BoardPiece::Knight, status.IsWhite, status.WLC,
+                                 status.WRC, status.BLC, status.BRC>(from, to);
+    int delta = calculateCaptureScoreDelta<status.IsWhite, BoardPiece::Knight>(getCapturePiece<status.IsWhite>(brd,to),from, to);
+    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+}
+
+template <class BoardState status, int depth>
+constexpr inline int bishopMove(const Board &brd, int from, int to, int alpha, int beta, int score) noexcept {
+    Board newBoard = brd.move<BoardPiece::Bishop, status.IsWhite, status.WLC,
+                              status.WRC, status.BLC, status.BRC>(from, to);    
+    int delta = calculateMoveScoreDelta<status.IsWhite, BoardPiece::Bishop>(from, to);
+    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+}
+
+template <class BoardState status, int depth>
+constexpr inline int bishopCapture(const Board &brd, int from, int to, int alpha, int beta, int score) noexcept {
+    Board newBoard = brd.capture<BoardPiece::Bishop, status.IsWhite, status.WLC,
+                                 status.WRC, status.BLC, status.BRC>(from, to);
+    int delta = calculateCaptureScoreDelta<status.IsWhite, BoardPiece::Bishop>(getCapturePiece<status.IsWhite>(brd,to),from, to);
+    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+}
+
+template <class BoardState status, int depth>
+constexpr inline int rookMove(const Board &brd, int from, int to, int alpha, int beta, int score) noexcept {
+    Board newBoard = brd.move<BoardPiece::Rook, status.IsWhite, status.WLC,
+                              status.WRC, status.BLC, status.BRC>(from, to);
+    int delta = calculateMoveScoreDelta<status.IsWhite, BoardPiece::Rook>(from, to);
+    if constexpr (status.IsWhite) {
+        if constexpr (status.WLC) {
+            if (from == 0) {
+                return searchFunc<status.rookMoveLeft(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+            }
+        }
+        if constexpr (status.WRC) {
+            if (from == 7) {
+                return searchFunc<status.rookMoveRight(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+            }
+        }
+    } else {
+        if constexpr (status.BLC) {
+            if (from == 56) {
+                return searchFunc<status.rookMoveLeft(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+            }
+        }
+        if constexpr (status.BRC) {
+            if (from == 63) {
+                return searchFunc<status.rookMoveRight(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+            }
+        }
+    }
+    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+}
+
+template <class BoardState status, int depth>
+constexpr inline int rookCapture(const Board &brd, int from, int to, int alpha, int beta, int score) noexcept {
+    Board newBoard = brd.capture<BoardPiece::Rook, status.IsWhite, status.WLC,
+                                 status.WRC, status.BLC, status.BRC>(from, to);
+    int delta = calculateCaptureScoreDelta<status.IsWhite, BoardPiece::Rook>(getCapturePiece<status.IsWhite>(brd,to),from, to);
+    if constexpr (status.IsWhite) {
+        if constexpr (status.WLC) {
+            if (from == 0) {
+                return searchFunc<status.rookMoveLeft(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+            }
+        }
+        if constexpr (status.WRC) {
+            if (from == 7) {
+                return searchFunc<status.rookMoveRight(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+            }
+        }
+    } else {
+        if constexpr (status.BLC) {
+            if (from == 56) {
+                return searchFunc<status.rookMoveLeft(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+            }
+        }
+        if constexpr (status.BRC) {
+            if (from == 63) {
+                return searchFunc<status.rookMoveRight(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+            }
+        }
+    }
+    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+}
+
+template <class BoardState status, int depth>
+constexpr inline int queenMove(const Board &brd, int from, int to, int alpha, int beta, int score) noexcept {
+    Board newBoard = brd.move<BoardPiece::Queen, status.IsWhite, status.WLC,
+                              status.WRC, status.BLC, status.BRC>(from, to);
+    int delta = calculateMoveScoreDelta<status.IsWhite, BoardPiece::Queen>(from, to);
+    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+}
+
+template <class BoardState status, int depth>
+constexpr inline int queenCapture(const Board &brd, int from,
+                                   int to, int alpha, int beta, int score) noexcept {
+    Board newBoard = brd.capture<BoardPiece::Queen, status.IsWhite, status.WLC,
+                                 status.WRC, status.BLC, status.BRC>(from, to);
+    int delta = calculateCaptureScoreDelta<status.IsWhite, BoardPiece::Queen>(getCapturePiece<status.IsWhite>(brd,to),from, to);
+    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+}
+
+template <class BoardState status, int depth>
+constexpr inline int kingMove(const Board &brd, int from, int to, int alpha, int beta, int score) noexcept {
+    Board newBoard = brd.move<BoardPiece::King, status.IsWhite, status.WLC,
+                              status.WRC, status.BLC, status.BRC>(from, to);
+    int delta = calculateMoveScoreDelta<status.IsWhite, BoardPiece::King>(from, to);
+    return searchFunc<status.king(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+}
+
+template <class BoardState status, int depth>
+constexpr inline int kingCapture(const Board &brd, int from, int to, int alpha, int beta, int score) noexcept {
+    Board newBoard = brd.capture<BoardPiece::King, status.IsWhite, status.WLC,
+                                 status.WRC, status.BLC, status.BRC>(from, to);
+    int delta = calculateCaptureScoreDelta<status.IsWhite, BoardPiece::King>(getCapturePiece<status.IsWhite>(brd,to),from, to);
+    return searchFunc<status.king(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
+}
+
+template <class BoardState status, int depth>
+constexpr inline int leftCastel(const Board &brd, int from, int to, int alpha, int beta, int score) noexcept {
+    int delta = 0;
     if constexpr (status.IsWhite) {
         Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, true,
                                     false, false, false>();
-        perft<status.normal(), depth - 1>(newBoard, 0);
+        return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
     } else {
         Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, false,
                                     false, true, false>();
-        perft<status.normal(), depth - 1>(newBoard, 0);
+        return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
     }
 }
 
 template <class BoardState status, int depth>
-constexpr inline void rightCastel(const Board &brd, int from, int to) noexcept {
+constexpr inline int rightCastel(const Board &brd, int from, int to, int alpha, int beta, int score) noexcept {
+    int delta = 0;
     if constexpr (status.IsWhite) {
         Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, false,
                                     true, false, false>();
-        perft<status.normal(), depth - 1>(newBoard, 0);
+        return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
     } else {
         Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, false,
                                     false, false, true>();
-        perft<status.normal(), depth - 1>(newBoard, 0);
+        return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta, score+delta);
     }
 }
+
