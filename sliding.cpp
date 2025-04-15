@@ -107,19 +107,19 @@ constexpr uint64_t RC(uint64_t occ, int square) {
     int tf = square % 8;
     for (r = tr + 1; r <= 7; r++) {
         result |= (1ULL << (r * 8 + tf));
-        if ((occ >> r * 8 + tf)&1) { break; };
+        if ((occ >> (r * 8 + tf))&1) { break; };
     }
     for (r = tr - 1; r >=0; r--) {
         result |= (1ULL << (r * 8 + tf));
-        if ((occ >> r * 8 + tf)&1) { break; };
+        if ((occ >> (r * 8 + tf))&1) { break; };
     }
     for (f = tf + 1;f <= 7;f++) {
         result |= (1ULL << (tr * 8 + f));
-        if ((occ >> tr * 8 + f)&1) { break; };
+        if ((occ >> (tr * 8 + f))&1) { break; };
     }
     for (f = tf - 1;f >= 0; f--) {
         result |= (1ULL << (tr * 8 + f));
-        if ((occ >> tr * 8 + f)&1) { break; };
+        if ((occ >> (tr * 8 + f))&1) { break; };
     }
     return result;
 }

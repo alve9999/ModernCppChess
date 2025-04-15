@@ -8,7 +8,7 @@
 
 #define RANK(position) ((position) / 8)
 #define FILE(position) ((position)%8)
-
+#define GOOD_MOVE 20
 constexpr int mg_value[6] = { 82, 337, 365, 477, 1025,  0 };
 constexpr int eg_value[6] = { 94, 281, 297, 512,  936,  0 };
 constexpr int mg_table[6][2][64] = { {{      0,   0,   0,   0,   0,   0,  0,   0,

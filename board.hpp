@@ -5,15 +5,16 @@
 #include <string>
 //
 #define _fast                                                                  \
-    __attribute__((always_inline)) inline constexpr __attribute__((aligned(32)))
+    inline constexpr 
 
-#if defined(__BMI__)
+#define Bitloop(X) for (; X; X = (X & (X - 1)))
+/*#if defined(__BMI__)
     #include <immintrin.h>
     #define Bitloop(X) for (; X; X = _blsr_u64(X))
 #else
     #define Bitloop(X) for (; X; X = (X & (X - 1)))
 #endif
-
+*/
 inline void printBitboard(uint64_t bitboard) {
     for (int rank = 7; rank >= 0; rank--) {
         for (int file = 7; file >= 0; file--) {

@@ -7,6 +7,7 @@
 #include "movegen.hpp"
 #include "move.hpp"
 #include "ai.hpp"
+#include "hash.hpp"
 #include <memory>
 bool white = false;
 
@@ -67,11 +68,14 @@ void proccessCommand(std::string str, std::unique_ptr<Board>& brd, std::unique_p
         bool whiteRight  = state->WRC;
         bool blackLeft   = state->BLC;
         bool blackRight  = state->BRC;
-        Callback ml = findBestMove<7>(*brd,0,whiteTurn,enPassant,whiteLeft,whiteRight,blackLeft,blackRight);
+        Callback ml = iterative_deepening(*brd,0,whiteTurn,enPassant,whiteLeft,whiteRight,blackLeft,blackRight,3);
 
         MoveResult moveRes = ml.makeMove(*brd, ml.from, ml.to);
         brd.reset(new Board(moveRes.board));
         state.reset(new BoardState(moveRes.state));
+
+        std::cout << ttc << " " << ttf << std::endl;
+
         std::cout << "bestmove " << convertMoveToUCI(ml.from,ml.to)<< std::endl;
 
     }
