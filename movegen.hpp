@@ -1,5 +1,4 @@
 #pragma once
-#include "MoveList.hpp"
 #include "board.hpp"
 #include "check.hpp"
 #include "constants.hpp"
@@ -10,10 +9,10 @@
 #include <iostream>
 
 
-using SearchMoveFunc = int (*)(const Board &, int, int,int,int,int);
+using SearchMoveFunc = int (*)(const Board &, int, int,int,int,int,uint64_t);
 using MakeMoveFunc = MoveResult (*)(const Board &, int, int);
 
-_fast void moveHandler(const MakeMoveFunc &move, Callback *ml, int &count,
+_fast void moveHandler(const MakeMoveFunc &move, Callback *ml, int &count, 
                        int from, int to) noexcept {
     Callback &cb = ml[count++];
     cb.makeMove = move;
@@ -21,12 +20,40 @@ _fast void moveHandler(const MakeMoveFunc &move, Callback *ml, int &count,
     cb.to = to;
 }
 
-_fast void moveHandler(const SearchMoveFunc &move, Callback *ml, int &count,
+_fast void moveHandler(const SearchMoveFunc &move, Callback *ml, int &count, 
                        int from, int to) noexcept {
     Callback &cb = ml[count++];
     cb.move = move;
     cb.from = from;
     cb.to = to;
+}
+
+_fast void goodMoveHandler(const SearchMoveFunc &move, Callback *ml, int &count, int& goodCount, 
+                       int from, int to) noexcept {
+    Callback *cb;
+    if(goodCount != 0){
+        cb = &ml[goodCount--];
+    }
+    else{
+        cb = &ml[count++];
+    }
+    cb->move = move;
+    cb->from = from;
+    cb->to = to;
+}
+
+_fast void goodMoveHandler(const MakeMoveFunc &move, Callback *ml, int &count, int& goodCount,
+                       int from, int to) noexcept {
+    Callback *cb;
+    if(goodCount != 0){
+        cb = &ml[goodCount--];
+    }
+    else{
+        cb = &ml[count++];
+    }
+    cb->makeMove = move;
+    cb->from = from;
+    cb->to = to;
 }
 
 template <bool IsWhite> _fast uint64_t enemyOrEmpty(const Board &brd) noexcept {
@@ -38,7 +65,7 @@ template <bool IsWhite> _fast uint64_t enemyOrEmpty(const Board &brd) noexcept {
 
 template <class BoardState status, int depth, bool search>
 _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
-                            uint64_t pinD, Callback *ml, int &count) noexcept {
+                            uint64_t pinD, Callback *ml, int &count, int& goodCount ) noexcept {
     uint64_t pinnedD, pinnedHV, notPinned;
     if constexpr (status.IsWhite) {
         pinnedD = brd.WPawn & pinD;
@@ -61,18 +88,18 @@ _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
         if constexpr (status.IsWhite) {
             const int from = to - 8;
             if constexpr (search) {
-                moveHandler(promote<status, depth>, ml, count, from, to);
+                goodMoveHandler(promote<status, depth>, ml, count, goodCount, from, to);
             }
             else{
-                moveHandler(makePromote<status>, ml, count, from, to);
+                goodMoveHandler(makePromote<status>, ml, count, goodCount, from, to);
             }
         } else {
             const int from = to + 8;
             if constexpr (search) {
-                moveHandler(promote<status, depth>, ml, count, from, to);
+                goodMoveHandler(promote<status, depth>, ml, count, goodCount, from, to);
             }
             else{
-                moveHandler(makePromote<status>, ml, count, from, to);
+                goodMoveHandler(makePromote<status>, ml, count, goodCount, from, to);
             }
         }
     }
@@ -131,19 +158,19 @@ _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
         if constexpr (status.IsWhite) {
             const int from = to - 7;
             if constexpr (search){
-                moveHandler(promoteCapture<status, depth>, ml, count, from, to);
+                goodMoveHandler(promoteCapture<status, depth>, ml, count, goodCount, from, to);
             }
             else {
-                moveHandler(makePromote<status>, ml, count, from, to);
+                goodMoveHandler(makePromote<status>, ml, count, goodCount, from, to);
             }
 
         } else {
             const int from = to + 9;
             if constexpr (search){
-                moveHandler(promoteCapture<status, depth>, ml, count, from, to);
+                goodMoveHandler(promoteCapture<status, depth>, ml, count, goodCount, from, to);
             }
             else {
-                moveHandler(makePromote<status>, ml, count, from, to);
+                goodMoveHandler(makePromote<status>, ml, count, goodCount, from, to);
             }
         }
     }
@@ -152,18 +179,18 @@ _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
         if constexpr (status.IsWhite) {
             const int from = to - 7;
             if constexpr (search){
-                moveHandler(pawnCapture<status, depth>, ml, count, from, to);
+                goodMoveHandler(pawnCapture<status, depth>, ml, count, goodCount, from, to);
             }
             else {
-                moveHandler(makePawnCapture<status>, ml, count, from, to);
+                goodMoveHandler(makePawnCapture<status>, ml, count, goodCount, from, to);
             }
         } else {
             const int from = to + 9;
             if constexpr (search){
-                moveHandler(pawnCapture<status, depth>, ml, count, from, to);
+                goodMoveHandler(pawnCapture<status, depth>, ml, count, goodCount, from, to);
             }
             else {
-                moveHandler(makePawnCapture<status>, ml, count, from, to);
+                goodMoveHandler(makePawnCapture<status>, ml, count, goodCount, from, to);
             }
         }
     }
@@ -177,18 +204,18 @@ _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
         if constexpr (status.IsWhite) {
             const int from = to - 9;
             if constexpr (search){
-                moveHandler(promoteCapture<status, depth>, ml, count, from, to);
+                goodMoveHandler(promoteCapture<status, depth>, ml, count, goodCount, from, to);
             }
             else {
-                moveHandler(makePromoteCapture<status>, ml, count, from, to);
+                goodMoveHandler(makePromoteCapture<status>, ml, count, goodCount, from, to);
             }
         } else {
             const int from = to + 7;
             if constexpr (search){
-                moveHandler(promoteCapture<status, depth>, ml, count, from, to);
+                goodMoveHandler(promoteCapture<status, depth>, ml, count, goodCount, from, to);
             }
             else {
-                moveHandler(makePromoteCapture<status>, ml, count, from, to);
+                goodMoveHandler(makePromoteCapture<status>, ml, count, goodCount, from, to);
             }
         }
     }
@@ -197,18 +224,18 @@ _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
         if constexpr (status.IsWhite) {
             const int from = to - 9;
             if constexpr (search){
-                moveHandler(pawnCapture<status, depth>, ml, count, from, to);
+                goodMoveHandler(pawnCapture<status, depth>, ml, count, goodCount, from, to);
             }
             else {
-                moveHandler(makePawnCapture<status>, ml, count, from, to);
+                goodMoveHandler(makePawnCapture<status>, ml, count, goodCount, from, to);
             }
         } else {
             const int from = to + 7;
             if constexpr (search){
-                moveHandler(pawnCapture<status, depth>, ml, count, from, to);
+                goodMoveHandler(pawnCapture<status, depth>, ml, count, goodCount, from, to);
             }
             else {
-                moveHandler(makePawnCapture<status>, ml, count, from, to);
+                goodMoveHandler(makePawnCapture<status>, ml, count, goodCount, from, to);
             }
         }
     }
@@ -217,7 +244,7 @@ _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
 template <class BoardState status, int depth, bool search>
 _fast static void knightMoves(const Board &brd, uint64_t chessMask,
                               uint64_t pinHV, uint64_t pinD, Callback *ml,
-                              int &count) noexcept {
+                              int &count, int& goodCount ) noexcept {
     uint64_t knights;
     if constexpr (status.IsWhite) {
         knights = brd.WKnight & ~(pinHV | pinD);
@@ -242,10 +269,10 @@ _fast static void knightMoves(const Board &brd, uint64_t chessMask,
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
             if constexpr (search){
-                moveHandler(knightCapture<status, depth>, ml, count, from, to);
+                goodMoveHandler(knightCapture<status, depth>, ml, count, goodCount, from, to);
             }
             else {
-                moveHandler(makeKnightCapture<status>, ml, count, from, to);
+                goodMoveHandler(makeKnightCapture<status>, ml, count, goodCount, from, to);
             }
         }
     }
@@ -254,7 +281,7 @@ _fast static void knightMoves(const Board &brd, uint64_t chessMask,
 template <class BoardState status, int depth, bool search>
 _fast static void bishopMoves(const Board &brd, uint64_t chessMask,
                               uint64_t pinHV, uint64_t pinD, Callback *ml,
-                              int &count) noexcept {
+                              int &count, int& goodCount ) noexcept {
     uint64_t bishopsNotPinned, bishopsPinnedD;
     if constexpr (status.IsWhite) {
         bishopsNotPinned = brd.WBishop & ~(pinHV | pinD);
@@ -281,10 +308,10 @@ _fast static void bishopMoves(const Board &brd, uint64_t chessMask,
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
             if constexpr (search){
-                moveHandler(bishopCapture<status, depth>, ml, count, from, to);
+                goodMoveHandler(bishopCapture<status, depth>, ml, count, goodCount, from, to);
             }
             else {
-                moveHandler(makeBishopCapture<status>, ml, count, from, to);
+                goodMoveHandler(makeBishopCapture<status>, ml, count, goodCount, from, to);
             }
         }
     }
@@ -307,10 +334,10 @@ _fast static void bishopMoves(const Board &brd, uint64_t chessMask,
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
             if constexpr (search){
-                moveHandler(bishopCapture<status, depth>, ml, count, from, to);
+                goodMoveHandler(bishopCapture<status, depth>, ml, count, goodCount, from, to);
             }
             else {
-                moveHandler(makeBishopCapture<status>, ml, count, from, to);
+                goodMoveHandler(makeBishopCapture<status>, ml, count, goodCount, from, to);
             }
         }
     }
@@ -319,7 +346,7 @@ _fast static void bishopMoves(const Board &brd, uint64_t chessMask,
 template <class BoardState status, int depth, bool search>
 _fast static void queenMoves(const Board &brd, uint64_t chessMask,
                              uint64_t pinHV, uint64_t pinD, Callback *ml,
-                             int &count) noexcept {
+                             int &count, int& goodCount ) noexcept {
     uint64_t queenNotPinned, queenPinnedD, queenPinnedHV;
     if constexpr (status.IsWhite) {
         queenNotPinned = brd.WQueen & ~(pinHV | pinD);
@@ -348,10 +375,10 @@ _fast static void queenMoves(const Board &brd, uint64_t chessMask,
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
             if constexpr (search){
-                moveHandler(queenCapture<status, depth>, ml, count, from, to);
+                goodMoveHandler(queenCapture<status, depth>, ml, count, goodCount, from, to);
             }
             else {
-                moveHandler(makeQueenCapture<status>, ml, count, from, to);
+                goodMoveHandler(makeQueenCapture<status>, ml, count, goodCount, from, to);
             }
         }
     }
@@ -374,10 +401,10 @@ _fast static void queenMoves(const Board &brd, uint64_t chessMask,
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
             if constexpr (search){
-                moveHandler(queenCapture<status, depth>, ml, count, from, to);
+                goodMoveHandler(queenCapture<status, depth>, ml, count, goodCount, from, to);
             }
             else {
-                moveHandler(makeQueenCapture<status>, ml, count, from, to);
+                goodMoveHandler(makeQueenCapture<status>, ml, count, goodCount, from, to);
             }
         }
     }
@@ -400,10 +427,10 @@ _fast static void queenMoves(const Board &brd, uint64_t chessMask,
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
             if constexpr (search){
-                moveHandler(queenCapture<status, depth>, ml, count, from, to);
+                goodMoveHandler(queenCapture<status, depth>, ml, count, goodCount, from, to);
             }
             else {
-                moveHandler(makeQueenCapture<status>, ml, count, from, to);
+                goodMoveHandler(makeQueenCapture<status>, ml, count, goodCount, from, to);
             }
         }
     }
@@ -412,7 +439,7 @@ _fast static void queenMoves(const Board &brd, uint64_t chessMask,
 template <class BoardState status, int depth, bool search>
 _fast static void rookMoves(const Board &brd, uint64_t chessMask,
                             uint64_t pinHV, uint64_t pinD, Callback *ml,
-                            int &count) noexcept {
+                            int &count, int& goodCount ) noexcept {
     uint64_t rooksNotPinned, rooksPinnedHV;
     if constexpr (status.IsWhite) {
         rooksNotPinned = brd.WRook & ~(pinHV | pinD);
@@ -439,10 +466,10 @@ _fast static void rookMoves(const Board &brd, uint64_t chessMask,
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
             if constexpr (search){
-                moveHandler(rookCapture<status, depth>, ml, count, from, to);
+                goodMoveHandler(rookCapture<status, depth>, ml, count, goodCount, from, to);
             }
             else {
-                moveHandler(makeRookCapture<status>, ml, count, from, to);
+                goodMoveHandler(makeRookCapture<status>, ml, count, goodCount, from, to);
             }
         }
     }
@@ -465,10 +492,10 @@ _fast static void rookMoves(const Board &brd, uint64_t chessMask,
         Bitloop(captures) {
             const int to = __builtin_ctzll(captures);
             if constexpr (search){
-                moveHandler(rookCapture<status, depth>, ml, count, from, to);
+                goodMoveHandler(rookCapture<status, depth>, ml, count, goodCount, from, to);
             }
             else {
-                moveHandler(makeRookCapture<status>, ml, count, from, to);
+                goodMoveHandler(makeRookCapture<status>, ml, count, goodCount, from, to);
             }
         }
     }
@@ -477,7 +504,7 @@ _fast static void rookMoves(const Board &brd, uint64_t chessMask,
 template <class BoardState status, int depth, bool search>
 _fast static void kingMoves(const Board &brd, uint64_t chessMask,
                             uint64_t kingBan, int kingPos, Callback *ml,
-                            int &count) noexcept {
+                            int &count, int& goodCount ) noexcept {
     uint64_t moves =
         kingMasks[kingPos] & ~kingBan & enemyOrEmpty<status.IsWhite>(brd);
     uint64_t captures = moves & brd.Occ;
@@ -494,26 +521,26 @@ _fast static void kingMoves(const Board &brd, uint64_t chessMask,
     Bitloop(captures) {
         const int to = __builtin_ctzll(captures);
         if constexpr (search){
-            moveHandler(kingCapture<status, depth>, ml, count, kingPos, to);
+            goodMoveHandler(kingCapture<status, depth>, ml, count, goodCount, kingPos, to);
         }
         else {
-            moveHandler(makeKingCapture<status>, ml, count, kingPos, to);
+            goodMoveHandler(makeKingCapture<status>, ml, count, goodCount, kingPos, to);
         }
     }
 }
 
 template <class BoardState status, int depth, bool search>
 _fast void castels(const Board &brd, uint64_t kingBan, Callback *ml,
-                   int &count) noexcept {
+                   int &count, int& goodCount ) noexcept {
     if constexpr (status.IsWhite) {
         if constexpr (status.WLC) {
             if ((!(WNotOccupiedL & brd.Occ)) && (!(WNotAttackedL & kingBan)) &&
                 (brd.WRook & WRookL)) {
                 if constexpr (search){
-                    moveHandler(leftCastel<status, depth>, ml, count, 4, 2);
+                    goodMoveHandler(leftCastel<status, depth>, ml, count, goodCount, 4, 2);
                 }
                 else {
-                    moveHandler(makeLeftCastel<status>, ml, count, 4, 2);
+                    goodMoveHandler(makeLeftCastel<status>, ml, count, goodCount, 4, 2);
                 }
             }
         }
@@ -521,10 +548,10 @@ _fast void castels(const Board &brd, uint64_t kingBan, Callback *ml,
             if ((!(WNotOccupiedR & brd.Occ)) && (!(WNotAttackedR & kingBan)) &&
                 (brd.WRook & WRookR)) {
                 if constexpr (search){
-                    moveHandler(rightCastel<status, depth>, ml, count, 4, 6);
+                    goodMoveHandler(rightCastel<status, depth>, ml, count, goodCount, 4, 6);
                 }
                 else {
-                    moveHandler(makeRightCastel<status>, ml, count, 4, 6);
+                    goodMoveHandler(makeRightCastel<status>, ml, count, goodCount, 4, 6);
                 }
             }
         }
@@ -533,10 +560,10 @@ _fast void castels(const Board &brd, uint64_t kingBan, Callback *ml,
             if ((!(BNotOccupiedL & brd.Occ)) && (!(BNotAttackedL & kingBan)) &&
                 (brd.BRook & BRookL)) {
                 if constexpr (search){
-                    moveHandler(leftCastel<status, depth>, ml, count, 61, 58);
+                    goodMoveHandler(leftCastel<status, depth>, ml, count, goodCount, 61, 58);
                 }
                 else {
-                    moveHandler(makeLeftCastel<status>, ml, count, 61, 58);
+                    goodMoveHandler(makeLeftCastel<status>, ml, count, goodCount, 61, 58);
                 }
             }
         }
@@ -544,10 +571,10 @@ _fast void castels(const Board &brd, uint64_t kingBan, Callback *ml,
             if ((!(BNotOccupiedR & brd.Occ)) && (!(BNotAttackedR & kingBan)) &&
                 (brd.BRook & BRookR)) {
                 if constexpr (search){
-                    moveHandler(rightCastel<status, depth>, ml, count, 61, 62);
+                    goodMoveHandler(rightCastel<status, depth>, ml, count, goodCount, 61, 62);
                 }
                 else {
-                    moveHandler(makeRightCastel<status>, ml, count, 61, 62);
+                    goodMoveHandler(makeRightCastel<status>, ml, count, goodCount, 61, 62);
                 }
             }
         }
@@ -555,7 +582,7 @@ _fast void castels(const Board &brd, uint64_t kingBan, Callback *ml,
 }
 
 template <class BoardState status, int depth, bool search>
-_fast void EPMoves(const Board &brd, int ep, Callback *ml, int &count,
+_fast void EPMoves(const Board &brd, int ep, Callback *ml, int &count, int& goodCount ,
                    uint64_t pinD, uint64_t pinHV) noexcept {
     uint64_t EPRight, EPLeft, EPLeftPinned, EPRightPinned;
     uint64_t EPSquare = 1ull << ep;
@@ -594,7 +621,7 @@ _fast void EPMoves(const Board &brd, int ep, Callback *ml, int &count,
 
 template <class BoardState status, int depth, bool search>
 _fast void genMoves(const Board &brd, int ep, Callback *ml,
-                    int &count) noexcept {
+                    int &count, int& goodCount ) noexcept {
     uint64_t king;
     if constexpr (status.IsWhite) {
         king = brd.WKing;
@@ -608,22 +635,22 @@ _fast void genMoves(const Board &brd, int ep, Callback *ml,
     uint64_t kingBan = 1;
     generateCheck<status.IsWhite>(brd, kingPos, pinHV, pinD, checkmask,
                                   kingBan);
-    pawnMoves<status, depth, search>(brd, checkmask, pinHV, pinD, ml, count);
-    knightMoves<status, depth, search>(brd, checkmask, pinHV, pinD, ml, count);
-    bishopMoves<status, depth, search>(brd, checkmask, pinHV, pinD, ml, count);
-    queenMoves<status, depth, search>(brd, checkmask, pinHV, pinD, ml, count);
-    rookMoves<status, depth, search>(brd, checkmask, pinHV, pinD, ml, count);
-    kingMoves<status, depth, search>(brd, checkmask, kingBan, kingPos, ml, count);
+    pawnMoves<status, depth, search>(brd, checkmask, pinHV, pinD, ml, count, goodCount);
+    knightMoves<status, depth, search>(brd, checkmask, pinHV, pinD, ml, count, goodCount);
+    bishopMoves<status, depth, search>(brd, checkmask, pinHV, pinD, ml, count, goodCount);
+    queenMoves<status, depth, search>(brd, checkmask, pinHV, pinD, ml, count, goodCount);
+    rookMoves<status, depth, search>(brd, checkmask, pinHV, pinD, ml, count, goodCount);
+    kingMoves<status, depth, search>(brd, checkmask, kingBan, kingPos, ml, count, goodCount);
     if constexpr (status.WLC || status.WRC || status.BLC || status.BRC) {
-        castels<status, depth, search>(brd, kingBan, ml, count);
+        castels<status, depth, search>(brd, kingBan, ml, count, goodCount);
     }
     if constexpr (status.EP) {
-        EPMoves<status, depth, search>(brd, ep, ml, count, pinD, pinHV);
+        EPMoves<status, depth, search>(brd, ep, ml, count, goodCount, pinD, pinHV);
     }
 }
 
 template<int depth,bool search>
-_fast void moveGenCall(const Board &brd, int ep, Callback *ml, int &count,
+_fast void moveGenCall(const Board &brd, int ep, Callback *ml, int &count, int& goodCount ,
                        bool WH, bool EP, bool WL, bool WR, bool BL,
                        bool BR) noexcept {
     if (WH) {
@@ -634,40 +661,40 @@ _fast void moveGenCall(const Board &brd, int ep, Callback *ml, int &count,
                         if (BR)
                             genMoves<BoardState{true, true, true, true, true,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{true, true, true, true, true,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     } else {
                         if (BR)
                             genMoves<BoardState{true, true, true, true, false,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{true, true, true, true, false,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     }
                 } else {
                     if (BL) {
                         if (BR)
                             genMoves<BoardState{true, true, true, false, true,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{true, true, true, false, true,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     } else {
                         if (BR)
                             genMoves<BoardState{true, true, true, false, false,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{true, true, true, false, false,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     }
                 }
             } else {
@@ -676,40 +703,40 @@ _fast void moveGenCall(const Board &brd, int ep, Callback *ml, int &count,
                         if (BR)
                             genMoves<BoardState{true, true, false, true, true,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{true, true, false, true, true,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     } else {
                         if (BR)
                             genMoves<BoardState{true, true, false, true, false,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{true, true, false, true, false,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     }
                 } else {
                     if (BL) {
                         if (BR)
                             genMoves<BoardState{true, true, false, false, true,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{true, true, false, false, true,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     } else {
                         if (BR)
                             genMoves<BoardState{true, true, false, false, false,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{true, true, false, false, false,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     }
                 }
             }
@@ -720,40 +747,40 @@ _fast void moveGenCall(const Board &brd, int ep, Callback *ml, int &count,
                         if (BR)
                             genMoves<BoardState{true, false, true, true, true,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{true, false, true, true, true,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     } else {
                         if (BR)
                             genMoves<BoardState{true, false, true, true, false,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{true, false, true, true, false,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     }
                 } else {
                     if (BL) {
                         if (BR)
                             genMoves<BoardState{true, false, true, false, true,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{true, false, true, false, true,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     } else {
                         if (BR)
                             genMoves<BoardState{true, false, true, false, false,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{true, false, true, false, false,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     }
                 }
             } else {
@@ -762,40 +789,40 @@ _fast void moveGenCall(const Board &brd, int ep, Callback *ml, int &count,
                         if (BR)
                             genMoves<BoardState{true, false, false, true, true,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{true, false, false, true, true,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     } else {
                         if (BR)
                             genMoves<BoardState{true, false, false, true, false,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{true, false, false, true, false,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     }
                 } else {
                     if (BL) {
                         if (BR)
                             genMoves<BoardState{true, false, false, false, true,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{true, false, false, false, true,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     } else {
                         if (BR)
                             genMoves<BoardState{true, false, false, false,
                                                 false, true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{true, false, false, false,
                                                 false, false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     }
                 }
             }
@@ -808,40 +835,40 @@ _fast void moveGenCall(const Board &brd, int ep, Callback *ml, int &count,
                         if (BR)
                             genMoves<BoardState{false, true, true, true, true,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{false, true, true, true, true,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     } else {
                         if (BR)
                             genMoves<BoardState{false, true, true, true, false,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{false, true, true, true, false,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     }
                 } else {
                     if (BL) {
                         if (BR)
                             genMoves<BoardState{false, true, true, false, true,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{false, true, true, false, true,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     } else {
                         if (BR)
                             genMoves<BoardState{false, true, true, false, false,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{false, true, true, false, false,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     }
                 }
             } else {
@@ -850,40 +877,40 @@ _fast void moveGenCall(const Board &brd, int ep, Callback *ml, int &count,
                         if (BR)
                             genMoves<BoardState{false, true, false, true, true,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{false, true, false, true, true,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     } else {
                         if (BR)
                             genMoves<BoardState{false, true, false, true, false,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{false, true, false, true, false,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     }
                 } else {
                     if (BL) {
                         if (BR)
                             genMoves<BoardState{false, true, false, false, true,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{false, true, false, false, true,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     } else {
                         if (BR)
                             genMoves<BoardState{false, true, false, false,
                                                 false, true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{false, true, false, false,
                                                 false, false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     }
                 }
             }
@@ -894,40 +921,40 @@ _fast void moveGenCall(const Board &brd, int ep, Callback *ml, int &count,
                         if (BR)
                             genMoves<BoardState{false, false, true, true, true,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{false, false, true, true, true,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     } else {
                         if (BR)
                             genMoves<BoardState{false, false, true, true, false,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{false, false, true, true, false,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     }
                 } else {
                     if (BL) {
                         if (BR)
                             genMoves<BoardState{false, false, true, false, true,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{false, false, true, false, true,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     } else {
                         if (BR)
                             genMoves<BoardState{false, false, true, false,
                                                 false, true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{false, false, true, false,
                                                 false, false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     }
                 }
             } else {
@@ -936,40 +963,40 @@ _fast void moveGenCall(const Board &brd, int ep, Callback *ml, int &count,
                         if (BR)
                             genMoves<BoardState{false, false, false, true, true,
                                                 true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{false, false, false, true, true,
                                                 false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     } else {
                         if (BR)
                             genMoves<BoardState{false, false, false, true,
                                                 false, true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{false, false, false, true,
                                                 false, false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     }
                 } else {
                     if (BL) {
                         if (BR)
                             genMoves<BoardState{false, false, false, false,
                                                 true, true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{false, false, false, false,
                                                 true, false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     } else {
                         if (BR)
                             genMoves<BoardState{false, false, false, false,
                                                 false, true},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                         else
                             genMoves<BoardState{false, false, false, false,
                                                 false, false},
-                                     depth,search>(brd, ep, ml, count);
+                                     depth,search>(brd, ep, ml, count, goodCount);
                     }
                 }
             }
