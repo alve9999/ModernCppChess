@@ -146,27 +146,28 @@ constexpr uint64_t Rank7 = 0b000000001111111100000000000000000000000000000000000
 constexpr uint64_t RankMid = 0x0000FFFFFFFF0000ull;
 constexpr uint64_t Rank_18 = 0xFF000000000000FFull;
 constexpr uint64_t ONES = 0xFFFFFFFFFFFFFFFFull;
-constexpr uint64_t WNotOccupiedL = 0b01110000ull;
-constexpr uint64_t WNotAttackedL = 0b00111000ull;
 
-constexpr uint64_t WNotOccupiedR = 0b00000110ull;
-constexpr uint64_t WNotAttackedR = 0b00001110ull;
+constexpr uint64_t WNotOccupiedL = 0b00001110ull;
+constexpr uint64_t WNotAttackedL = 0b00011100ull;
 
-constexpr uint64_t BNotOccupiedL = 0b01110000ull << 56ull;
-constexpr uint64_t BNotAttackedL = 0b00111000ull << 56ull;
+constexpr uint64_t WNotOccupiedR = 0b01100000ull;
+constexpr uint64_t WNotAttackedR = 0b01110000ull;
 
-constexpr uint64_t BNotOccupiedR = 0b00000110ull << 56ull;
-constexpr uint64_t BNotAttackedR = 0b00001110ull << 56ull;
+constexpr uint64_t BNotOccupiedL = 0b00001110ull << 56ull;
+constexpr uint64_t BNotAttackedL = 0b00011100ull << 56ull;
 
-constexpr uint64_t WRookLChange = 0b10010000ull;
-constexpr uint64_t BRookLChange = 0b10010000ull << 56ull;
-constexpr uint64_t WRookRChange = 0b00000101ull;
-constexpr uint64_t BRookRChange = 0b00000101ull << 56ull;
+constexpr uint64_t BNotOccupiedR = 0b01100000ull << 56ull;
+constexpr uint64_t BNotAttackedR = 0b01110000ull << 56ull;
 
-constexpr uint64_t WKingLChange = 0b00101000ull;
-constexpr uint64_t BKingLChange = 0b00101000ull << 56ull;
-constexpr uint64_t WKingRChange = 0b00001010ull;
-constexpr uint64_t BKingRChange = 0b00001010ull << 56ull;
+constexpr uint64_t WRookLChange = 0b00001001ull;
+constexpr uint64_t BRookLChange = 0b00001001ull << 56ull;
+constexpr uint64_t WRookRChange = 0b10100000ull;
+constexpr uint64_t BRookRChange = 0b10100000ull << 56ull;
+
+constexpr uint64_t WKingLChange = 0b00010100ull;
+constexpr uint64_t BKingLChange = 0b00010100ull << 56ull;
+constexpr uint64_t WKingRChange = 0b01010000ull;
+constexpr uint64_t BKingRChange = 0b01010000ull << 56ull;
 
 
 constexpr uint64_t WRookL = 0b10000000ull;
