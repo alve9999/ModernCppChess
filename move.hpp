@@ -119,9 +119,9 @@ MoveCallbacks algebraicToMove(std::string &alg, const Board &brd,
     std::function<Board()> boardCallback;
     std::function<BoardState()> stateCallback;
 
-    if (special == 2) { // Castling
+    if (special == 2) { // castling
         if constexpr (IsWhite) {
-            if (to > from) { // King-side castling
+            if (to < from) { // King-side castling
                 boardCallback = [&brd]() {
                     return brd.template castle<BoardPiece::King, true, false,
                                                true, false, false>();
@@ -291,17 +291,17 @@ MoveCallbacks algebraicToMove(std::string &alg, const Board &brd,
         };
     }
     if (special == 1) {
-        stateCallback = [&state]() { return state.pawn(); };
+        stateCallback = [state]() { return state.pawn(); };
     } else if (special == 2) {
-        stateCallback = [&state]() { return state.king(); };
+        stateCallback = [state]() { return state.king(); };
     } else if (special == 4) {
-        stateCallback = [&state]() { return state.rookMoveLeft(); };
+        stateCallback = [state]() { return state.rookMoveLeft(); };
     } else if (special == 5) {
-        stateCallback = [&state]() { return state.rookMoveRight(); };
+        stateCallback = [state]() { return state.rookMoveRight(); };
     } else if (type == BoardPiece::King) {
-        stateCallback = [&state]() { return state.king(); };
+        stateCallback = [state]() { return state.king(); };
     } else {
-        stateCallback = [&state]() { return state.normal(); };
+        stateCallback = [state]() { return state.normal(); };
     }
 
     return MoveCallbacks{boardCallback, stateCallback};

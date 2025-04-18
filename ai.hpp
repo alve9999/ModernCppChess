@@ -12,6 +12,8 @@
 
 extern std::atomic<bool> shouldStop;
 std::atomic<bool> shouldStop(false);
+#define STOP -7777
+
 
 template <class BoardState status, int depth>
 inline int minimax(const Board &brd, int ep, int alpha, int beta, int score, uint64_t key) noexcept {
@@ -41,14 +43,16 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score, uin
         }
 
         int maxEval = -99999;
-        if (shouldStop.load()) {
-            return 0;
-        }
+
         for (int i = goodCount + 1; i < count; i++) {
             int eval = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha, -score, key);
             maxEval = std::max(maxEval, eval);
+
             if (beta <= eval) {
                 if constexpr (depth > 1) {
+                    if (shouldStop.load()) {
+                        return STOP;
+                    }
                     TT.store(depth, eval, 2, key);
                 }
                 return maxEval;
@@ -57,6 +61,9 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score, uin
                 hashf = 0;
                 alpha = eval;
             }
+        }
+        if (shouldStop.load()) {
+            return STOP;
         }
         TT.store(depth, maxEval, hashf, key);
         return maxEval;
@@ -80,6 +87,13 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP, bool WL
 
     if (preferredIndex >= goodCount + 1 && preferredIndex < count) {
         int score = -ml[preferredIndex].move(brd, ml[preferredIndex].from, ml[preferredIndex].to, -beta, -alpha.load(), intitalScore, initialKey);
+        if (shouldStop.load()) {
+            count = GOOD_MOVE;
+            goodCount = GOOD_MOVE-1;
+            moveGenCall<1,0>(brd, ep, ml, count, goodCount, WH, EP, WL, WR, BL, BR);
+            printf("returning preferred move %d\n", preferredIndex);
+            return ml[preferredIndex];
+        }
         bestScore = score;
         bestMoveIndex = preferredIndex;
         alpha.store(score);
@@ -91,7 +105,9 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP, bool WL
             continue;
         }
         int score = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha.load(), intitalScore, initialKey);
-        
+        if (shouldStop.load()) {
+            continue;
+        }
         if (score > bestScore) {
             bestScore = score;
             bestMoveIndex = i;
@@ -136,9 +152,8 @@ Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP, bool WL
     });
 
     for (int depth = 1; depth <= 14; depth+=2) {
-        auto now = clock::now();
-        std::chrono::duration<double> elapsed = now - start;
-        if (elapsed.count() > timeLimit) {
+
+        if (shouldStop.load()) {
             break;
         }
 
@@ -166,9 +181,7 @@ Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP, bool WL
         if (shouldStop.load()) {
             break;
         }
-        else{
-            globalBestMove = bestMove;
-        }
+
     }
     timerThread.join();
     printf("Max completed depth: %d\n", maxReachedDepth-2);

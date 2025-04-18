@@ -10,6 +10,7 @@
 #include "hash.hpp"
 #include <memory>
 bool white = false;
+bool hasBeenActivated = false;
 
 std::string convertToUCI(int index) {
     int row = index / 8;
@@ -22,15 +23,28 @@ std::string convertToUCI(int index) {
     return std::string(1, file) + std::string(1, rank);
 }
 
-std::string convertMoveToUCI(int from, int to) {
-    return convertToUCI(from) + convertToUCI(to);
+
+std::string convertMoveToUCI(const Board& brd, int from, int to) {
+    std::string uci = convertToUCI(from) + convertToUCI(to);
+
+    uint64_t fromMask = 1ULL << from;
+
+    bool isWhitePawn = (brd.WPawn & fromMask) != 0;
+    bool isBlackPawn = (brd.BPawn & fromMask) != 0;
+
+    if (isWhitePawn && to / 8 == 7) {
+        uci += 'q'; 
+    } else if (isBlackPawn && to / 8 == 0) {
+        uci += 'q';
+    }
+
+    return uci;
 }
 
 void proccessCommand(std::string str, std::unique_ptr<Board>& brd, std::unique_ptr<BoardState>& state){
     std::vector<std::string> tokens;
     std::stringstream ss(str);
     std::string token;
-
     while(std::getline(ss, token, ' ')) {
         tokens.push_back(token);
     }
@@ -39,6 +53,9 @@ void proccessCommand(std::string str, std::unique_ptr<Board>& brd, std::unique_p
     }
     if(tokens[0] == "position"){
         if(tokens.back()!="startpos"){
+            if(!hasBeenActivated){
+                white = false;
+            }
             int ep = 0;
             MoveCallbacks move;
             if(white){
@@ -47,8 +64,10 @@ void proccessCommand(std::string str, std::unique_ptr<Board>& brd, std::unique_p
             else{
                 move = algebraicToMove<true>(tokens.back(),*brd,*state,ep);
             }
+
             brd.reset(new Board(move.boardCallback()));
             state.reset(new BoardState(move.stateCallback()));
+
         }
         else{
             white = true;
@@ -61,6 +80,7 @@ void proccessCommand(std::string str, std::unique_ptr<Board>& brd, std::unique_p
         std::cout << "id name chess_engien\nid author Alve Lindell\nuciok\n";
     } 
     else if (tokens[0] == "go") {
+        hasBeenActivated = true;
         //calculate next move
         bool whiteTurn   = state->IsWhite;
         bool enPassant   = state->EP;
@@ -70,13 +90,14 @@ void proccessCommand(std::string str, std::unique_ptr<Board>& brd, std::unique_p
         bool blackRight  = state->BRC;
         Callback ml = iterative_deepening(*brd,0,whiteTurn,enPassant,whiteLeft,whiteRight,blackLeft,blackRight,3);
 
+        std::cout << "bestmove " << convertMoveToUCI(*brd,ml.from,ml.to)<<std::endl;
+        
         MoveResult moveRes = ml.makeMove(*brd, ml.from, ml.to);
         brd.reset(new Board(moveRes.board));
         state.reset(new BoardState(moveRes.state));
 
         std::cout << ttc << " " << ttf << std::endl;
 
-        std::cout << "bestmove " << convertMoveToUCI(ml.from,ml.to)<< std::endl;
 
     }
 }
