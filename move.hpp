@@ -36,7 +36,7 @@ MoveCallbacks algebraicToMove(std::string &alg, const Board &brd,
     if constexpr (IsWhite) {
         if (ISSET(brd.WPawn, from)) {
             type = BoardPiece::Pawn;
-            if (to == ep) {
+            if ((abs(to - from) == 7 || abs(to - from) == 9) && !capture) {
                 special = 3; // en passant
             }
             if (abs(from - to) == 16) {
@@ -76,7 +76,7 @@ MoveCallbacks algebraicToMove(std::string &alg, const Board &brd,
     } else { // Black pieces
         if (ISSET(brd.BPawn, from)) {
             type = BoardPiece::Pawn;
-            if (to == ep) {
+            if ((abs(to - from) == 7 || abs(to - from) == 9) && !capture) {
                 special = 3; // en passant
             }
             if (abs(from - to) == 16) {

@@ -101,7 +101,7 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
             white = state->IsWhite;
 
             if (fenEnd < tokens.size()) {
-                int ep = 0;
+                int ep = -1;
                 for (size_t i = fenEnd + 1; i < tokens.size(); i++) {
                     MoveCallbacks move;
                     if (white) {
@@ -125,10 +125,10 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
         std::cout << "id name chess_engien\nid author Alve Lindell\nuciok\n";
     } else if (tokens[0] == "go") {
         auto start = std::chrono::high_resolution_clock::now();
-        int whiteTime = 0;
-        int blackTime = 0;
-        int whiteInc = 0;
-        int blackInc = 0;
+        int whiteTime = 10000;
+        int blackTime = 10000;
+        int whiteInc = 1000;
+        int blackInc = 1000;
         for (size_t i = 1; i + 1 < tokens.size(); i++) {
             if (tokens[i] == "wtime")
                 whiteTime = std::stoi(tokens[i + 1]);
@@ -156,8 +156,8 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
             iterative_deepening(*brd, 0, whiteTurn, enPassant, whiteLeft,
                                 whiteRight, blackLeft, blackRight, think);
 
-
-
+        std::cout << "bestmove " << convertMoveToUCI(*brd, ml.from, ml.to)
+                  << std::endl;
         MoveResult moveRes = ml.makeMove(*brd, ml.from, ml.to);
         brd.reset(new Board(moveRes.board));
         state.reset(new BoardState(moveRes.state));
@@ -167,8 +167,6 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
         // Calculate duration
         std::chrono::duration<double> duration = end - start;
         printf("total time %f\n", duration.count());
-        std::cout << "bestmove " << convertMoveToUCI(*brd, ml.from, ml.to)
-                  << std::endl;
     }
 }
 
@@ -177,10 +175,9 @@ void uciRunGame() {
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 "));
     auto state = std::make_unique<BoardState>(parseBoardState(
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 "));
-    while (1) {
-        if (std::cin.peek() != EOF) {
-            std::string str;
-            std::getline(std::cin, str);
+    while (std::cin) {
+        std::string str;
+        if (std::getline(std::cin, str)) {
             std::cout << str << std::endl;
             proccessCommand(str, brd, state);
         }
