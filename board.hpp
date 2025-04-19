@@ -4,17 +4,16 @@
 #include <stdint.h>
 #include <string>
 //
-#define _fast                                                                  \
-    inline constexpr 
+#define _fast inline constexpr
 
-#define Bitloop(X) for (; X; X = (X & (X - 1)))
-/*#if defined(__BMI__)
-    #include <immintrin.h>
-    #define Bitloop(X) for (; X; X = _blsr_u64(X))
+// #define Bitloop(X) for (; X; X = (X & (X - 1)))
+#if defined(__BMI__)
+#include <immintrin.h>
+#define Bitloop(X) for (; X; X = _blsr_u64(X))
 #else
-    #define Bitloop(X) for (; X; X = (X & (X - 1)))
+#define Bitloop(X) for (; X; X = (X & (X - 1)))
 #endif
-*/
+
 inline void printBitboard(uint64_t bitboard) {
     for (int rank = 7; rank >= 0; rank--) {
         for (int file = 7; file >= 0; file--) {
@@ -250,12 +249,12 @@ struct Board {
         const uint64_t mov = from | to;
         if constexpr (IsWhite) {
             const uint64_t remove = 1ULL << (moveTo - 8);
-            return Board(bp ^ remove, bn, bb, br, bq, bk, wp ^ mov, wn, wb, wr, 
+            return Board(bp ^ remove, bn, bb, br, bq, bk, wp ^ mov, wn, wb, wr,
                          wq, wk);
         } else {
             const uint64_t remove = 1ULL << (moveTo + 8);
-            return Board(bp ^ mov, bn, bb, br, bq, bk, wp ^ remove, wn, 
-                         wb, wr, wq, wk);
+            return Board(bp ^ mov, bn, bb, br, bq, bk, wp ^ remove, wn, wb, wr,
+                         wq, wk);
         }
     }
 
@@ -384,6 +383,48 @@ struct Board {
         }
     }
 };
+
+inline void printBoard(const Board &b) {
+    for (int rank = 7; rank >= 0; rank--) {
+        for (int file = 0; file < 8; file++) {
+            int square = rank * 8 + file;
+            uint64_t mask = 1ULL << square;
+
+            char piece = '.';
+            if (b.BPawn & mask)
+                piece = 'p';
+            else if (b.BKnight & mask)
+                piece = 'n';
+            else if (b.BBishop & mask)
+                piece = 'b';
+            else if (b.BRook & mask)
+                piece = 'r';
+            else if (b.BQueen & mask)
+                piece = 'q';
+            else if (b.BKing & mask)
+                piece = 'k';
+            else if (b.WPawn & mask)
+                piece = 'P';
+            else if (b.WKnight & mask)
+                piece = 'N';
+            else if (b.WBishop & mask)
+                piece = 'B';
+            else if (b.WRook & mask)
+                piece = 'R';
+            else if (b.WQueen & mask)
+                piece = 'Q';
+            else if (b.WKing & mask)
+                piece = 'K';
+
+            std::cout << piece << ' ';
+        }
+        std::cout << std::endl;
+    }
+    std::cout << std::endl;
+}
+
+#include <string>
+
 inline static uint64_t FenToBmp(const std::string &FEN, char p) {
     uint64_t result = 0;
     int square = 56;

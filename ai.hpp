@@ -3,49 +3,47 @@
 #include "constants.hpp"
 #include "eval.hpp"
 #include "hash.hpp"
-#include <iostream>
+#include <atomic>
 #include <chrono>
+#include <iostream>
 #include <omp.h>
-#include <atomic>
 #include <thread>
-#include <atomic>
 
 extern std::atomic<bool> shouldStop;
 std::atomic<bool> shouldStop(false);
 #define STOP -7777
 
-
 template <class BoardState status, int depth>
-inline int minimax(const Board &brd, int ep, int alpha, int beta, int score, uint64_t key) noexcept {
-
+inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
+                   uint64_t key) noexcept {
 
     if constexpr (depth == 0) {
-        //TT.store(depth, -score, 0, key);
+        // TT.store(depth, -score, 0, key);
         return -score;
-    }
-    else {
+    } else {
         int hashf = 1;
-        if constexpr (depth !=1) {
+        if constexpr (depth != 1) {
             int val = TT.probe_hash(depth, alpha, beta, key);
 
-            if(val != UNKNOWN) {
+            if (val != UNKNOWN) {
                 return val;
             }
         }
 
         Callback ml[100];
         int count = GOOD_MOVE;
-        int goodCount = GOOD_MOVE-1;
+        int goodCount = GOOD_MOVE - 1;
         genMoves<status, depth, 1>(brd, ep, ml, count, goodCount);
-        
-        if (count == 0) {
-            return -99998;
+
+        if (count == GOOD_MOVE) {
+            return -99999;
         }
 
         int maxEval = -99999;
 
         for (int i = goodCount + 1; i < count; i++) {
-            int eval = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha, -score, key);
+            int eval = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha,
+                                   -score, key);
             maxEval = std::max(maxEval, eval);
 
             if (beta <= eval) {
@@ -57,7 +55,7 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score, uin
                 }
                 return maxEval;
             }
-            if(alpha < eval) {
+            if (alpha < eval) {
                 hashf = 0;
                 alpha = eval;
             }
@@ -70,14 +68,16 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score, uin
     }
 }
 
-
 template <int depth>
-inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP, bool WL, bool WR, bool BL, bool BR, int preferredIndex, int& bestIndex){
+inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
+                             bool WL, bool WR, bool BL, bool BR,
+                             int preferredIndex, int &bestIndex) {
     auto start = std::chrono::high_resolution_clock::now();
     Callback ml[100];
     int count = GOOD_MOVE;
-    int goodCount = GOOD_MOVE-1;
-    moveGenCall<depth, 1>(brd, ep, ml, count, goodCount, WH, EP, WL, WR, BL, BR);
+    int goodCount = GOOD_MOVE - 1;
+    moveGenCall<depth, 1>(brd, ep, ml, count, goodCount, WH, EP, WL, WR, BL,
+                          BR);
     int intitalScore = WH ? eval<true>(brd) : eval<false>(brd);
     int initialKey = create_hash(brd, WH);
     int bestScore = -99999;
@@ -86,11 +86,14 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP, bool WL
     int beta = 99999;
 
     if (preferredIndex >= goodCount + 1 && preferredIndex < count) {
-        int score = -ml[preferredIndex].move(brd, ml[preferredIndex].from, ml[preferredIndex].to, -beta, -alpha.load(), intitalScore, initialKey);
+        int score = -ml[preferredIndex].move(
+            brd, ml[preferredIndex].from, ml[preferredIndex].to, -beta,
+            -alpha.load(), intitalScore, initialKey);
         if (shouldStop.load()) {
             count = GOOD_MOVE;
-            goodCount = GOOD_MOVE-1;
-            moveGenCall<1,0>(brd, ep, ml, count, goodCount, WH, EP, WL, WR, BL, BR);
+            goodCount = GOOD_MOVE - 1;
+            moveGenCall<1, 0>(brd, ep, ml, count, goodCount, WH, EP, WL, WR, BL,
+                              BR);
             printf("returning preferred move %d\n", preferredIndex);
             return ml[preferredIndex];
         }
@@ -98,22 +101,23 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP, bool WL
         bestMoveIndex = preferredIndex;
         alpha.store(score);
     }
-    
-    #pragma omp parallel for
+
+#pragma omp parallel for
     for (int i = goodCount + 1; i < count; i++) {
-        if(i == preferredIndex) {
+        if (i == preferredIndex) {
             continue;
         }
-        int score = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha.load(), intitalScore, initialKey);
+        int score = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha.load(),
+                                intitalScore, initialKey);
         if (shouldStop.load()) {
             continue;
         }
         if (score > bestScore) {
             bestScore = score;
             bestMoveIndex = i;
-            
+
             int expected = alpha.load();
-            while (score > expected && 
+            while (score > expected &&
                    !alpha.compare_exchange_weak(expected, score)) {
             }
         }
@@ -122,18 +126,20 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP, bool WL
     auto end = std::chrono::high_resolution_clock::now();
     // Calculate duration
     std::chrono::duration<double> duration = end - start;
-    printf("evaluated %f\n", duration.count()); 
-    printf("score: %d\n", bestScore);
+    printf("evaluated %f\n", duration.count());
+    printf("info depth %d score cp %d\n", depth, bestScore);
     count = GOOD_MOVE;
-    goodCount = GOOD_MOVE-1;
-    moveGenCall<1,0>(brd, ep, ml, count, goodCount, WH, EP, WL, WR, BL, BR);
+    goodCount = GOOD_MOVE - 1;
+    moveGenCall<1, 0>(brd, ep, ml, count, goodCount, WH, EP, WL, WR, BL, BR);
     return ml[bestMoveIndex];
 }
 
-Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP, bool WL, bool WR, bool BL, bool BR, double timeLimit) {
+Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP,
+                             bool WL, bool WR, bool BL, bool BR,
+                             double timeLimit) {
     using clock = std::chrono::high_resolution_clock;
     auto start = clock::now();
-    shouldStop.store(false); 
+    shouldStop.store(false);
 
     Callback bestMove{};
     Callback globalBestMove{};
@@ -143,7 +149,8 @@ Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP, bool WL
     std::thread timerThread([&] {
         while (true) {
             auto now = clock::now();
-            if (std::chrono::duration<double>(now - start).count() > timeLimit) {
+            if (std::chrono::duration<double>(now - start).count() >
+                timeLimit) {
                 shouldStop.store(true);
                 break;
             }
@@ -151,39 +158,79 @@ Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP, bool WL
         }
     });
 
-    for (int depth = 1; depth <= 14; depth+=2) {
+    for (int depth = 1; depth <= 14; depth += 2) {
 
         if (shouldStop.load()) {
             break;
         }
 
-
         switch (depth) {
-            case 1: bestMove = findBestMove<1>(brd, ep, WH, EP, WL, WR, BL, BR, bestMoveIndex, bestMoveIndex); break;
-            case 2: bestMove = findBestMove<2>(brd, ep, WH, EP, WL, WR, BL, BR, bestMoveIndex, bestMoveIndex); break;
-            case 3: bestMove = findBestMove<3>(brd, ep, WH, EP, WL, WR, BL, BR, bestMoveIndex, bestMoveIndex); break;
-            case 4: bestMove = findBestMove<4>(brd, ep, WH, EP, WL, WR, BL, BR, bestMoveIndex, bestMoveIndex); break;
-            case 5: bestMove = findBestMove<5>(brd, ep, WH, EP, WL, WR, BL, BR, bestMoveIndex, bestMoveIndex); break;
-            case 6: bestMove = findBestMove<6>(brd, ep, WH, EP, WL, WR, BL, BR, bestMoveIndex, bestMoveIndex); break;
-            case 7: bestMove = findBestMove<7>(brd, ep, WH, EP, WL, WR, BL, BR, bestMoveIndex, bestMoveIndex); break;
-            case 8: bestMove = findBestMove<8>(brd, ep, WH, EP, WL, WR, BL, BR, bestMoveIndex, bestMoveIndex); break;
-            case 9: bestMove = findBestMove<9>(brd, ep, WH, EP, WL, WR, BL, BR, bestMoveIndex, bestMoveIndex); break;
-            case 10: bestMove = findBestMove<10>(brd, ep, WH, EP, WL, WR, BL, BR, bestMoveIndex, bestMoveIndex); break;
-            case 11: bestMove = findBestMove<11>(brd, ep, WH, EP, WL, WR, BL, BR, bestMoveIndex, bestMoveIndex); break;
-            case 12: bestMove = findBestMove<12>(brd, ep, WH, EP, WL, WR, BL, BR, bestMoveIndex, bestMoveIndex); break;
-            case 13: bestMove = findBestMove<13>(brd, ep, WH, EP, WL, WR, BL, BR, bestMoveIndex, bestMoveIndex); break;
-            case 14: bestMove = findBestMove<14>(brd, ep, WH, EP, WL, WR, BL, BR, bestMoveIndex, bestMoveIndex); break;
-            default: break;
+        case 1:
+            bestMove = findBestMove<1>(brd, ep, WH, EP, WL, WR, BL, BR,
+                                       bestMoveIndex, bestMoveIndex);
+            break;
+        case 2:
+            bestMove = findBestMove<2>(brd, ep, WH, EP, WL, WR, BL, BR,
+                                       bestMoveIndex, bestMoveIndex);
+            break;
+        case 3:
+            bestMove = findBestMove<3>(brd, ep, WH, EP, WL, WR, BL, BR,
+                                       bestMoveIndex, bestMoveIndex);
+            break;
+        case 4:
+            bestMove = findBestMove<4>(brd, ep, WH, EP, WL, WR, BL, BR,
+                                       bestMoveIndex, bestMoveIndex);
+            break;
+        case 5:
+            bestMove = findBestMove<5>(brd, ep, WH, EP, WL, WR, BL, BR,
+                                       bestMoveIndex, bestMoveIndex);
+            break;
+        case 6:
+            bestMove = findBestMove<6>(brd, ep, WH, EP, WL, WR, BL, BR,
+                                       bestMoveIndex, bestMoveIndex);
+            break;
+        case 7:
+            bestMove = findBestMove<7>(brd, ep, WH, EP, WL, WR, BL, BR,
+                                       bestMoveIndex, bestMoveIndex);
+            break;
+        case 8:
+            bestMove = findBestMove<8>(brd, ep, WH, EP, WL, WR, BL, BR,
+                                       bestMoveIndex, bestMoveIndex);
+            break;
+        case 9:
+            bestMove = findBestMove<9>(brd, ep, WH, EP, WL, WR, BL, BR,
+                                       bestMoveIndex, bestMoveIndex);
+            break;
+        case 10:
+            bestMove = findBestMove<10>(brd, ep, WH, EP, WL, WR, BL, BR,
+                                        bestMoveIndex, bestMoveIndex);
+            break;
+        case 11:
+            bestMove = findBestMove<11>(brd, ep, WH, EP, WL, WR, BL, BR,
+                                        bestMoveIndex, bestMoveIndex);
+            break;
+        case 12:
+            bestMove = findBestMove<12>(brd, ep, WH, EP, WL, WR, BL, BR,
+                                        bestMoveIndex, bestMoveIndex);
+            break;
+        case 13:
+            bestMove = findBestMove<13>(brd, ep, WH, EP, WL, WR, BL, BR,
+                                        bestMoveIndex, bestMoveIndex);
+            break;
+        case 14:
+            bestMove = findBestMove<14>(brd, ep, WH, EP, WL, WR, BL, BR,
+                                        bestMoveIndex, bestMoveIndex);
+            break;
+        default:
+            break;
         }
-        printf("Depth %d %d completed\n", depth, bestMoveIndex); 
         maxReachedDepth = depth;
 
         if (shouldStop.load()) {
             break;
         }
-
     }
     timerThread.join();
-    printf("Max completed depth: %d\n", maxReachedDepth-2);
+    printf("Max completed depth: %d\n", maxReachedDepth - 2);
     return bestMove;
 }
