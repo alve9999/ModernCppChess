@@ -117,12 +117,14 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
                 }
             }
             printBoard(*brd);
+            printBitboard((*brd).Occ);
         }
     } else if (tokens[0] == "isready") {
         std::cout << "readyok" << std::endl;
     } else if (tokens[0] == "uci") {
         std::cout << "id name chess_engien\nid author Alve Lindell\nuciok\n";
     } else if (tokens[0] == "go") {
+        auto start = std::chrono::high_resolution_clock::now();
         int whiteTime = 0;
         int blackTime = 0;
         int whiteInc = 0;
@@ -149,18 +151,24 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
         bool whiteRight = state->WRC;
         bool blackLeft = state->BLC;
         bool blackRight = state->BRC;
+
         Callback ml =
             iterative_deepening(*brd, 0, whiteTurn, enPassant, whiteLeft,
                                 whiteRight, blackLeft, blackRight, think);
 
-        std::cout << "bestmove " << convertMoveToUCI(*brd, ml.from, ml.to)
-                  << std::endl;
+
 
         MoveResult moveRes = ml.makeMove(*brd, ml.from, ml.to);
         brd.reset(new Board(moveRes.board));
         state.reset(new BoardState(moveRes.state));
 
         std::cout << ttc << " " << ttf << std::endl;
+        auto end = std::chrono::high_resolution_clock::now();
+        // Calculate duration
+        std::chrono::duration<double> duration = end - start;
+        printf("total time %f\n", duration.count());
+        std::cout << "bestmove " << convertMoveToUCI(*brd, ml.from, ml.to)
+                  << std::endl;
     }
 }
 

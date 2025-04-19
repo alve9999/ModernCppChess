@@ -11,8 +11,19 @@
 
 using SearchMoveFunc = int (*)(const Board &, int, int,int,int,int,uint64_t);
 using MakeMoveFunc = MoveResult (*)(const Board &, int, int);
+inline std::string converter(int index) {
+    int row = index / 8;
+    int col = index % 8;
 
-_fast void moveHandler(const MakeMoveFunc &move, Callback *ml, int &count, 
+    char file = 'a' + col;
+
+    char rank = '1' + (row);
+
+    return std::string(1, file) + std::string(1, rank);
+}
+
+
+inline void moveHandler(const MakeMoveFunc &move, Callback *ml, int &count, 
                        int from, int to) noexcept {
     Callback &cb = ml[count++];
     cb.makeMove = move;
@@ -42,7 +53,7 @@ _fast void goodMoveHandler(const SearchMoveFunc &move, Callback *ml, int &count,
     cb->to = to;
 }
 
-_fast void goodMoveHandler(const MakeMoveFunc &move, Callback *ml, int &count, int& goodCount,
+inline void goodMoveHandler(const MakeMoveFunc &move, Callback *ml, int &count, int& goodCount,
                        int from, int to) noexcept {
     Callback *cb;
     if(goodCount != 0){
@@ -560,10 +571,10 @@ _fast void castels(const Board &brd, uint64_t kingBan, Callback *ml,
             if ((!(BNotOccupiedL & brd.Occ)) && (!(BNotAttackedL & kingBan)) &&
                 (brd.BRook & BRookL)) {
                 if constexpr (search){
-                    goodMoveHandler(leftCastel<status, depth>, ml, count, goodCount, 61, 58);
+                    goodMoveHandler(leftCastel<status, depth>, ml, count, goodCount, 60, 58);
                 }
                 else {
-                    goodMoveHandler(makeLeftCastel<status>, ml, count, goodCount, 61, 58);
+                    goodMoveHandler(makeLeftCastel<status>, ml, count, goodCount, 60, 58);
                 }
             }
         }
@@ -571,10 +582,10 @@ _fast void castels(const Board &brd, uint64_t kingBan, Callback *ml,
             if ((!(BNotOccupiedR & brd.Occ)) && (!(BNotAttackedR & kingBan)) &&
                 (brd.BRook & BRookR)) {
                 if constexpr (search){
-                    goodMoveHandler(rightCastel<status, depth>, ml, count, goodCount, 61, 62);
+                    goodMoveHandler(rightCastel<status, depth>, ml, count, goodCount, 60, 62);
                 }
                 else {
-                    goodMoveHandler(makeRightCastel<status>, ml, count, goodCount, 61, 62);
+                    goodMoveHandler(makeRightCastel<status>, ml, count, goodCount, 60, 62);
                 }
             }
         }

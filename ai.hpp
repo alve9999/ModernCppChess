@@ -16,7 +16,9 @@ std::atomic<bool> shouldStop(false);
 template <class BoardState status, int depth>
 inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
                    uint64_t key) noexcept {
-
+    if (shouldStop.load()) {
+        return STOP;
+    }
     if constexpr (depth == 0) {
         // TT.store(depth, -score, 0, key);
         return -score;

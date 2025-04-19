@@ -9,13 +9,13 @@ template <bool IsWhite>
 _fast static void pawnCheckmask(const Board &brd,
                                 uint64_t &checkmask) noexcept {
     if constexpr (IsWhite) {
-        const uint64_t left = ((brd.WKing >> 7) & File1) & brd.BPawn;
-        const uint64_t right = ((brd.WKing >> 9) & File8) & brd.BPawn;
+        const uint64_t left = ((brd.WKing << 7) & (~File1)) & brd.BPawn;
+        const uint64_t right = ((brd.WKing << 9) & (~File8)) & brd.BPawn;
         checkmask &=
             ((!(static_cast<bool>(left | right)) * ONES) | (left | right));
     } else {
-        const uint64_t left = ((brd.BKing << 9) & File1) & brd.WPawn;
-        const uint64_t right = ((brd.BKing << 7) & File8) & brd.WPawn;
+        const uint64_t left = ((brd.BKing >> 9) & (~File1)) & brd.WPawn;
+        const uint64_t right = ((brd.BKing >> 7) & (~File8)) & brd.WPawn;
         checkmask &=
             (((!static_cast<bool>(left | right)) * ONES) | (left | right));
     }
