@@ -314,7 +314,7 @@ struct MoveResult {
 };
 
 using SearchMoveFunc = int (*)(const Board &, int, int, int, int, int,
-                               uint64_t);
+                               uint64_t, int);
 using MakeMoveFunc = MoveResult (*)(const Board &, int, int);
 
 struct Callback {
@@ -322,12 +322,13 @@ struct Callback {
     SearchMoveFunc move;
     uint8_t from;
     uint8_t to;
+    int value;
 };
 
 /*
 constexpr const int gd = 8;
 constexpr const bool count_succ = false;
-template <class BoardState status, int depth>
+template <class BoardState status>
 constexpr inline int perft(const Board &brd, int ep) noexcept {
     if constexpr (depth == 0) {
         volatile int a = eval<status.IsWhite>(brd);
@@ -758,9 +759,9 @@ inline uint64_t toggle_side_to_move(uint64_t key) {
     return key ^ random_key[768];
 }
 
-template <class BoardState status, int depth>
+template <class BoardState status>
 constexpr inline int pawnMove(const Board &brd, int from, int to, int alpha,
-                              int beta, int score, uint64_t key) noexcept {
+                              int beta, int score, uint64_t key, int depth) noexcept {
     Board newBoard = brd.move<BoardPiece::Pawn, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
 
@@ -769,14 +770,14 @@ constexpr inline int pawnMove(const Board &brd, int from, int to, int alpha,
 
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 0, from, to);
     newKey = toggle_side_to_move(newKey);
-    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta,
-                                                  score + delta, newKey);
+    return searchFunc<status.normal()>(newBoard, 0, alpha, beta,
+                                                score + delta, newKey, depth);
 }
 
-template <class BoardState status, int depth>
+template <class BoardState status>
 constexpr inline int pawnDoubleMove(const Board &brd, int from, int to,
                                     int alpha, int beta, int score,
-                                    uint64_t key) noexcept {
+                                    uint64_t key, int depth) noexcept {
     Board newBoard = brd.move<BoardPiece::Pawn, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
 
@@ -785,19 +786,13 @@ constexpr inline int pawnDoubleMove(const Board &brd, int from, int to,
 
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 0, from, to);
     newKey = toggle_side_to_move(newKey);
-
-    if constexpr (status.IsWhite) {
-        return searchFunc<status.pawn(), depth - 1>(
-            newBoard, to - 8, alpha, beta, score + delta, newKey);
-    } else {
-        return searchFunc<status.pawn(), depth - 1>(
-            newBoard, to + 8, alpha, beta, score + delta, newKey);
-    }
+    return searchFunc<status.pawn()>(
+            newBoard, to + 8, alpha, beta, score + delta, newKey, depth);
 }
 
-template <class BoardState status, int depth>
+template <class BoardState status, bool quite>
 constexpr inline int pawnCapture(const Board &brd, int from, int to, int alpha,
-                                 int beta, int score, uint64_t key) noexcept {
+                                 int beta, int score, uint64_t key, int depth) noexcept {
     Board newBoard = brd.capture<BoardPiece::Pawn, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
 
@@ -810,13 +805,19 @@ constexpr inline int pawnCapture(const Board &brd, int from, int to, int alpha,
         key, 0, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta,
-                                                  score + delta, newKey);
+    if constexpr (quite){
+        return quiescence<status.normal()>(newBoard, 0, alpha, beta,
+                                                score + delta, newKey, depth);
+    }
+    else{
+        return searchFunc<status.normal()>(newBoard, 0, alpha, beta,
+                                                score + delta, newKey, depth);
+    }
 }
 
-template <class BoardState status, int depth>
+template <class BoardState status>
 constexpr inline int promote(const Board &brd, int from, int to, int alpha,
-                             int beta, int score, uint64_t key) noexcept {
+                             int beta, int score, uint64_t key, int depth) noexcept {
     int delta =
         calculateMoveScoreDelta<status.IsWhite, BoardPiece::Pawn>(from, to);
 
@@ -832,31 +833,31 @@ constexpr inline int promote(const Board &brd, int from, int to, int alpha,
     }
     Board newBoard1 = brd.promote<BoardPiece::Queen, status.IsWhite, status.WLC,
                                   status.WRC, status.BLC, status.BRC>(from, to);
-    int val = searchFunc<status.normal(), depth - 1>(newBoard1, 0, alpha, beta,
-                                                     score + delta, newKey);
+    int val = searchFunc<status.normal()>(newBoard1, 0, alpha, beta,
+                                                     score + delta, newKey, depth);
     return val;
     Board newBoard2 = brd.promote<BoardPiece::Rook, status.IsWhite, status.WLC,
                                   status.WRC, status.BLC, status.BRC>(from, to);
-    int val2 = searchFunc<status.normal(), depth - 1>(newBoard2, 0, alpha, beta,
-                                                      score + delta, newKey);
+    int val2 = searchFunc<status.normal()>(newBoard2, 0, alpha, beta,
+                                                      score + delta, newKey, depth);
 
     Board newBoard3 =
         brd.promote<BoardPiece::Bishop, status.IsWhite, status.WLC, status.WRC,
                     status.BLC, status.BRC>(from, to);
-    int val3 = searchFunc<status.normal(), depth - 1>(newBoard3, 0, alpha, beta,
-                                                      score + delta, newKey);
+    int val3 = searchFunc<status.normal()>(newBoard3, 0, alpha, beta,
+                                                      score + delta, newKey, depth);
 
     Board newBoard4 =
         brd.promote<BoardPiece::Knight, status.IsWhite, status.WLC, status.WRC,
                     status.BLC, status.BRC>(from, to);
-    int val4 = searchFunc<status.normal(), depth - 1>(newBoard4, 0, alpha, beta,
-                                                      score + delta, newKey);
+    int val4 = searchFunc<status.normal()>(newBoard4, 0, alpha, beta,
+                                                      score + delta, newKey, depth);
 }
 
-template <class BoardState status, int depth>
+template <class BoardState status, bool quite>
 constexpr inline int promoteCapture(const Board &brd, int from, int to,
                                     int alpha, int beta, int score,
-                                    uint64_t key) noexcept {
+                                    uint64_t key, int depth) noexcept {
     int capturedPiece = getCapturePiece<status.IsWhite>(brd, to);
     int delta =
         calculateMoveScoreDelta<status.IsWhite, BoardPiece::Pawn>(from, to);
@@ -881,31 +882,36 @@ constexpr inline int promoteCapture(const Board &brd, int from, int to,
     Board newBoard1 =
         brd.promoteCapture<BoardPiece::Queen, status.IsWhite, status.WLC,
                            status.WRC, status.BLC, status.BRC>(from, to);
-    int val = searchFunc<status.normal(), depth - 1>(newBoard1, 0, alpha, beta,
-                                                     score + delta, newKey);
-    return val;
+    if constexpr (quite){
+        return quiescence<status.normal()>(newBoard1, 0, alpha, beta,
+                                                score + delta, newKey, depth);
+    }
+    else{
+        return searchFunc<status.normal()>(newBoard1, 0, alpha, beta,
+                                                score + delta, newKey, depth);
+    }
     Board newBoard2 =
         brd.promoteCapture<BoardPiece::Rook, status.IsWhite, status.WLC,
                            status.WRC, status.BLC, status.BRC>(from, to);
-    int val2 = searchFunc<status.normal(), depth - 1>(newBoard2, 0, alpha, beta,
-                                                      score + delta, newKey);
+    int val2 = searchFunc<status.normal()>(newBoard2, 0, alpha, beta,
+                                                      score + delta, newKey, depth);
 
     Board newBoard3 =
         brd.promoteCapture<BoardPiece::Bishop, status.IsWhite, status.WLC,
                            status.WRC, status.BLC, status.BRC>(from, to);
-    int val3 = searchFunc<status.normal(), depth - 1>(newBoard3, 0, alpha, beta,
-                                                      score + delta, newKey);
+    int val3 = searchFunc<status.normal()>(newBoard3, 0, alpha, beta,
+                                                      score + delta, newKey, depth);
 
     Board newBoard4 =
         brd.promoteCapture<BoardPiece::Knight, status.IsWhite, status.WLC,
                            status.WRC, status.BLC, status.BRC>(from, to);
-    int val4 = searchFunc<status.normal(), depth - 1>(newBoard4, 0, alpha, beta,
-                                                      score + delta, newKey);
+    int val4 = searchFunc<status.normal()>(newBoard4, 0, alpha, beta,
+                                                      score + delta, newKey, depth);
 }
 
-template <class BoardState status, int depth>
+template <class BoardState status>
 constexpr inline int EP(const Board &brd, int from, int to, int alpha, int beta,
-                        int score, uint64_t key) noexcept {
+                        int score, uint64_t key, int depth) noexcept {
     Board newBoard = brd.EP<BoardPiece::Pawn, status.IsWhite, status.WLC,
                             status.WRC, status.BLC, status.BRC>(from, to);
     int delta =
@@ -920,14 +926,13 @@ constexpr inline int EP(const Board &brd, int from, int to, int alpha, int beta,
 
     uint64_t newKey = update_hash_en_passant<status.IsWhite>(key, from, to);
     newKey = toggle_side_to_move(newKey);
-
-    return searchFunc<status.pawn(), depth - 1>(newBoard, 0, alpha, beta,
-                                                score + delta, newKey);
+    return searchFunc<status.pawn()>(newBoard, 0, alpha, beta,
+                                                score + delta, newKey, depth);
 }
 
-template <class BoardState status, int depth>
+template <class BoardState status>
 constexpr inline int knightMove(const Board &brd, int from, int to, int alpha,
-                                int beta, int score, uint64_t key) noexcept {
+                                int beta, int score, uint64_t key, int depth) noexcept {
     Board newBoard = brd.move<BoardPiece::Knight, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
     int delta =
@@ -936,14 +941,14 @@ constexpr inline int knightMove(const Board &brd, int from, int to, int alpha,
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 1, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta,
-                                                  score + delta, newKey);
+    return searchFunc<status.normal()>(newBoard, 0, alpha, beta,
+                                                score + delta, newKey, depth);
 }
 
-template <class BoardState status, int depth>
+template <class BoardState status, bool quite>
 constexpr inline int knightCapture(const Board &brd, int from, int to,
                                    int alpha, int beta, int score,
-                                   uint64_t key) noexcept {
+                                   uint64_t key, int depth) noexcept {
     Board newBoard = brd.capture<BoardPiece::Knight, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
 
@@ -955,13 +960,19 @@ constexpr inline int knightCapture(const Board &brd, int from, int to,
         key, 1, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta,
-                                                  score + delta, newKey);
+    if constexpr (quite){
+        return quiescence<status.normal()>(newBoard, 0, alpha, beta,
+                                                score + delta, newKey, depth);
+    }
+    else{
+        return searchFunc<status.normal()>(newBoard, 0, alpha, beta,
+                                                score + delta, newKey, depth);
+    }
 }
 
-template <class BoardState status, int depth>
+template <class BoardState status>
 constexpr inline int bishopMove(const Board &brd, int from, int to, int alpha,
-                                int beta, int score, uint64_t key) noexcept {
+                                int beta, int score, uint64_t key, int depth) noexcept {
     Board newBoard = brd.move<BoardPiece::Bishop, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
     int delta =
@@ -970,14 +981,14 @@ constexpr inline int bishopMove(const Board &brd, int from, int to, int alpha,
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 2, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta,
-                                                  score + delta, newKey);
+    return searchFunc<status.normal()>(newBoard, 0, alpha, beta,
+                                                score + delta, newKey, depth);
 }
 
-template <class BoardState status, int depth>
+template <class BoardState status, bool quite>
 constexpr inline int bishopCapture(const Board &brd, int from, int to,
                                    int alpha, int beta, int score,
-                                   uint64_t key) noexcept {
+                                   uint64_t key, int depth) noexcept {
     Board newBoard = brd.capture<BoardPiece::Bishop, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
     int capturedPiece = getCapturePiece<status.IsWhite>(brd, to);
@@ -988,13 +999,19 @@ constexpr inline int bishopCapture(const Board &brd, int from, int to,
         key, 2, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta,
-                                                  score + delta, newKey);
+    if constexpr (quite){
+        return quiescence<status.normal()>(newBoard, 0, alpha, beta,
+                                                score + delta, newKey, depth);
+    }
+    else{
+        return searchFunc<status.normal()>(newBoard, 0, alpha, beta,
+                                                score + delta, newKey, depth);
+    }
 }
 
-template <class BoardState status, int depth>
+template <class BoardState status>
 constexpr inline int rookMove(const Board &brd, int from, int to, int alpha,
-                              int beta, int score, uint64_t key) noexcept {
+                              int beta, int score, uint64_t key, int depth) noexcept {
     Board newBoard = brd.move<BoardPiece::Rook, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
     int delta =
@@ -1006,37 +1023,37 @@ constexpr inline int rookMove(const Board &brd, int from, int to, int alpha,
     if constexpr (status.IsWhite) {
         if constexpr (status.WLC) {
             if (from == 0) {
-                return searchFunc<status.rookMoveLeft(), depth - 1>(
-                    newBoard, 0, alpha, beta, score + delta, newKey);
+                return searchFunc<status.rookMoveLeft()>(newBoard, 0, alpha, beta,
+                                                            score + delta, newKey, depth);
             }
         }
         if constexpr (status.WRC) {
             if (from == 7) {
-                return searchFunc<status.rookMoveRight(), depth - 1>(
-                    newBoard, 0, alpha, beta, score + delta, newKey);
+                return searchFunc<status.rookMoveRight()>(newBoard, 0, alpha, beta,
+                                                            score + delta, newKey, depth);
             }
         }
     } else {
         if constexpr (status.BLC) {
             if (from == 56) {
-                return searchFunc<status.rookMoveLeft(), depth - 1>(
-                    newBoard, 0, alpha, beta, score + delta, newKey);
+                return searchFunc<status.rookMoveLeft()>(newBoard, 0, alpha, beta,
+                                                            score + delta, newKey, depth);
             }
         }
         if constexpr (status.BRC) {
             if (from == 63) {
-                return searchFunc<status.rookMoveRight(), depth - 1>(
-                    newBoard, 0, alpha, beta, score + delta, newKey);
+                return searchFunc<status.rookMoveRight()>(newBoard, 0, alpha, beta,
+                                                            score + delta, newKey, depth);
             }
         }
     }
-    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta,
-                                                  score + delta, newKey);
+    return searchFunc<status.normal()>(newBoard, 0, alpha, beta,
+                                                  score + delta, newKey, depth);
 }
 
-template <class BoardState status, int depth>
+template <class BoardState status, bool quite>
 constexpr inline int rookCapture(const Board &brd, int from, int to, int alpha,
-                                 int beta, int score, uint64_t key) noexcept {
+                                 int beta, int score, uint64_t key, int depth) noexcept {
     Board newBoard = brd.capture<BoardPiece::Rook, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
     int capturedPiece = getCapturePiece<status.IsWhite>(brd, to);
@@ -1050,37 +1067,67 @@ constexpr inline int rookCapture(const Board &brd, int from, int to, int alpha,
     if constexpr (status.IsWhite) {
         if constexpr (status.WLC) {
             if (from == 0) {
-                return searchFunc<status.rookMoveLeft(), depth - 1>(
-                    newBoard, 0, alpha, beta, score + delta, newKey);
+                if constexpr (quite){
+                    return quiescence<status.rookMoveLeft()>(newBoard, 0, alpha, beta,
+                                                            score + delta, newKey, depth);
+                }
+                else{
+                    return searchFunc<status.rookMoveLeft()>(newBoard, 0, alpha, beta,
+                                                            score + delta, newKey, depth);
+                }
             }
         }
         if constexpr (status.WRC) {
             if (from == 7) {
-                return searchFunc<status.rookMoveRight(), depth - 1>(
-                    newBoard, 0, alpha, beta, score + delta, newKey);
+                if constexpr (quite){
+                    return quiescence<status.rookMoveRight()>(newBoard, 0, alpha, beta,
+                                                            score + delta, newKey, depth);
+                }
+                else{
+                    return searchFunc<status.rookMoveRight()>(newBoard, 0, alpha, beta,
+                                                            score + delta, newKey, depth);
+                }
             }
         }
     } else {
         if constexpr (status.BLC) {
             if (from == 56) {
-                return searchFunc<status.rookMoveLeft(), depth - 1>(
-                    newBoard, 0, alpha, beta, score + delta, newKey);
+                if constexpr (quite){
+                    return quiescence<status.rookMoveLeft()>(newBoard, 0, alpha, beta,
+                                                            score + delta, newKey, depth);
+                }
+                else{
+                    return searchFunc<status.rookMoveLeft()>(newBoard, 0, alpha, beta,
+                                                            score + delta, newKey, depth);
+                }
             }
         }
         if constexpr (status.BRC) {
             if (from == 63) {
-                return searchFunc<status.rookMoveRight(), depth - 1>(
-                    newBoard, 0, alpha, beta, score + delta, newKey);
+                if constexpr (quite){
+                    return quiescence<status.rookMoveRight()>(newBoard, 0, alpha, beta,
+                                                            score + delta, newKey, depth);
+                }
+                else{
+                    return searchFunc<status.rookMoveRight()>(newBoard, 0, alpha, beta,
+                                                            score + delta, newKey, depth);
+                }
             }
         }
     }
-    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta,
-                                                  score + delta, newKey);
+    if constexpr (quite){
+        return quiescence<status.normal()>(newBoard, 0, alpha, beta,
+                                                score + delta, newKey, depth);
+    }
+    else{
+        return searchFunc<status.normal()>(newBoard, 0, alpha, beta,
+                                                score + delta, newKey, depth);
+    }
 }
 
-template <class BoardState status, int depth>
+template <class BoardState status>
 constexpr inline int queenMove(const Board &brd, int from, int to, int alpha,
-                               int beta, int score, uint64_t key) noexcept {
+                               int beta, int score, uint64_t key, int depth) noexcept {
     Board newBoard = brd.move<BoardPiece::Queen, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
     int delta =
@@ -1089,13 +1136,13 @@ constexpr inline int queenMove(const Board &brd, int from, int to, int alpha,
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 4, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta,
-                                                  score + delta, newKey);
+    return searchFunc<status.normal()>(newBoard, 0, alpha, beta,
+                                                score + delta, newKey, depth);
 }
 
-template <class BoardState status, int depth>
+template <class BoardState status, bool quite>
 constexpr inline int queenCapture(const Board &brd, int from, int to, int alpha,
-                                  int beta, int score, uint64_t key) noexcept {
+                                  int beta, int score, uint64_t key, int depth) noexcept {
     Board newBoard = brd.capture<BoardPiece::Queen, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
 
@@ -1107,13 +1154,19 @@ constexpr inline int queenCapture(const Board &brd, int from, int to, int alpha,
         key, 4, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta,
-                                                  score + delta, newKey);
+    if constexpr (quite){
+        return quiescence<status.normal()>(newBoard, 0, alpha, beta,
+                                                score + delta, newKey, depth);
+    }
+    else{
+        return searchFunc<status.normal()>(newBoard, 0, alpha, beta,
+                                                score + delta, newKey, depth);
+    }
 }
 
-template <class BoardState status, int depth>
+template <class BoardState status>
 constexpr inline int kingMove(const Board &brd, int from, int to, int alpha,
-                              int beta, int score, uint64_t key) noexcept {
+                              int beta, int score, uint64_t key, int depth) noexcept {
     Board newBoard = brd.move<BoardPiece::King, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
     int delta =
@@ -1122,13 +1175,13 @@ constexpr inline int kingMove(const Board &brd, int from, int to, int alpha,
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 5, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    return searchFunc<status.king(), depth - 1>(newBoard, 0, alpha, beta,
-                                                score + delta, newKey);
+    return searchFunc<status.king()>(newBoard, 0, alpha, beta,
+                                                score + delta, newKey, depth);
 }
 
-template <class BoardState status, int depth>
+template <class BoardState status, bool quite>
 constexpr inline int kingCapture(const Board &brd, int from, int to, int alpha,
-                                 int beta, int score, uint64_t key) noexcept {
+                                 int beta, int score, uint64_t key, int depth) noexcept {
     Board newBoard = brd.capture<BoardPiece::King, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
 
@@ -1140,13 +1193,19 @@ constexpr inline int kingCapture(const Board &brd, int from, int to, int alpha,
         key, 5, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    return searchFunc<status.king(), depth - 1>(newBoard, 0, alpha, beta,
-                                                score + delta, newKey);
+    if constexpr (quite){
+        return quiescence<status.king()>(newBoard, 0, alpha, beta,
+                                                score + delta, newKey, depth);
+    }
+    else{
+        return searchFunc<status.king()>(newBoard, 0, alpha, beta,
+                                                score + delta, newKey, depth);
+    }
 }
 
-template <class BoardState status, int depth>
+template <class BoardState status>
 constexpr inline int leftCastel(const Board &brd, int from, int to, int alpha,
-                                int beta, int score, uint64_t key) noexcept {
+                                int beta, int score, uint64_t key, int depth) noexcept {
     int delta = 0;
     uint64_t newKey;
     if constexpr (status.IsWhite) {
@@ -1160,8 +1219,9 @@ constexpr inline int leftCastel(const Board &brd, int from, int to, int alpha,
 
         Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, true,
                                     false, false, false>();
-        return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta,
-                                                      score + delta, newKey);
+
+        return searchFunc<status.normal()>(newBoard, 0, alpha, beta,
+                                                    score + delta, newKey, depth);
     } else {
         delta += mg_table[static_cast<int>(BoardPiece::King)][false][58] -
                  mg_table[static_cast<int>(BoardPiece::King)][false][60];
@@ -1173,14 +1233,14 @@ constexpr inline int leftCastel(const Board &brd, int from, int to, int alpha,
 
         Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, false,
                                     false, true, false>();
-        return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta,
-                                                      score + delta, newKey);
+        return searchFunc<status.normal()>(newBoard, 0, alpha, beta,
+                                                    score + delta, newKey, depth);
     }
 }
 
-template <class BoardState status, int depth>
+template <class BoardState status>
 constexpr inline int rightCastel(const Board &brd, int from, int to, int alpha,
-                                 int beta, int score, uint64_t key) noexcept {
+                                 int beta, int score, uint64_t key, int depth) noexcept {
     int delta = 0;
     uint64_t newKey;
     if constexpr (status.IsWhite) {
@@ -1194,8 +1254,9 @@ constexpr inline int rightCastel(const Board &brd, int from, int to, int alpha,
 
         Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, false,
                                     true, false, false>();
-        return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta,
-                                                      score + delta, newKey);
+
+        return searchFunc<status.normal()>(newBoard, 0, alpha, beta,
+                                                    score + delta, newKey, depth);
     } else {
         delta += mg_table[static_cast<int>(BoardPiece::King)][false][62] -
                  mg_table[static_cast<int>(BoardPiece::King)][false][60];
@@ -1207,7 +1268,7 @@ constexpr inline int rightCastel(const Board &brd, int from, int to, int alpha,
 
         Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, false,
                                     false, false, true>();
-        return searchFunc<status.normal(), depth - 1>(newBoard, 0, alpha, beta,
-                                                      score + delta, newKey);
+        return searchFunc<status.normal()>(newBoard, 0, alpha, beta,
+                                                    score + delta, newKey, depth);
     }
 }

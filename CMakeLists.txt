@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 set(CMAKE_CXX_COMPILER "clang++")
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftime-trace -fopenmp -march=native -O2 -Wno-narrowing -std=c++20 -ggdb")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftime-trace -fopenmp -O3 -Wno-narrowing -std=c++20 -ggdb -gdwarf-4")
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20 -ggdb")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20 -ggdb")
 project(chess2000)
 set(CMAKE_CXX_STANDARD 23)
 

@@ -33,6 +33,12 @@ _fast static void knightCheckmask(const Board &brd, uint64_t &checkmask,
     }
 }
 
+inline int flipX(int sq) noexcept {
+    int rank = sq / 8;
+    int file = sq % 8;
+    int flipped_file = 7 - file;
+    return rank * 8 + flipped_file;
+}
 template <bool IsWhite>
 _fast static void slidingPieceCheckmask(const Board &brd, uint64_t &pinHV,
                                         uint64_t &pinD, uint64_t &checkmask,
@@ -41,7 +47,7 @@ _fast static void slidingPieceCheckmask(const Board &brd, uint64_t &pinHV,
         uint64_t sliding = 0;
         if (RookMask[kingPos] & (brd.BRook | brd.BQueen)) {
             const uint64_t attacks = getRmagic(kingPos, brd.Occ);
-            sliding = attacks & (brd.BQueen | brd.BRook);
+            sliding |= attacks & (brd.BQueen | brd.BRook);
             uint64_t xRay = getRmagic(kingPos, brd.Occ ^ (attacks & brd.Occ)) &
                             (brd.BRook | brd.BQueen);
             Bitloop(xRay) {
@@ -61,7 +67,7 @@ _fast static void slidingPieceCheckmask(const Board &brd, uint64_t &pinHV,
             }
         }
         const int slidingCount = __builtin_popcountll(sliding);
-        if (slidingCount > 2) {
+        if (slidingCount >= 2) {
             checkmask = 0;
         }
         const uint64_t path = kingPath[64 * kingPos + __builtin_ctzll(sliding)];
@@ -70,7 +76,7 @@ _fast static void slidingPieceCheckmask(const Board &brd, uint64_t &pinHV,
         uint64_t sliding = 0;
         if (RookMask[kingPos] & (brd.WRook | brd.WQueen)) {
             uint64_t attacks = getRmagic(kingPos, brd.Occ);
-            sliding = attacks & (brd.WQueen | brd.WRook);
+            sliding |= attacks & (brd.WQueen | brd.WRook);
             uint64_t xRay = getRmagic(kingPos, brd.Occ ^ (attacks & brd.Occ)) &
                             (brd.WRook | brd.WQueen);
             Bitloop(xRay) {
@@ -90,7 +96,7 @@ _fast static void slidingPieceCheckmask(const Board &brd, uint64_t &pinHV,
             }
         }
         const int slidingCount = __builtin_popcountll(sliding);
-        if (slidingCount > 2) {
+        if (slidingCount >= 2) {
             checkmask = 0;
         }
         const uint64_t path = kingPath[64 * kingPos + __builtin_ctzll(sliding)];

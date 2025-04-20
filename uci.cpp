@@ -101,7 +101,7 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
             white = state->IsWhite;
 
             if (fenEnd < tokens.size()) {
-                int ep = -1;
+                int ep = 0;
                 for (size_t i = fenEnd + 1; i < tokens.size(); i++) {
                     MoveCallbacks move;
                     if (white) {
@@ -156,8 +156,8 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
             iterative_deepening(*brd, 0, whiteTurn, enPassant, whiteLeft,
                                 whiteRight, blackLeft, blackRight, think);
 
-        std::cout << "bestmove " << convertMoveToUCI(*brd, ml.from, ml.to)
-                  << std::endl;
+
+
         MoveResult moveRes = ml.makeMove(*brd, ml.from, ml.to);
         brd.reset(new Board(moveRes.board));
         state.reset(new BoardState(moveRes.state));
@@ -167,6 +167,7 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
         // Calculate duration
         std::chrono::duration<double> duration = end - start;
         printf("total time %f\n", duration.count());
+
     }
 }
 
@@ -175,9 +176,10 @@ void uciRunGame() {
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 "));
     auto state = std::make_unique<BoardState>(parseBoardState(
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 "));
-    while (std::cin) {
-        std::string str;
-        if (std::getline(std::cin, str)) {
+    while (1) {
+        if (std::cin.peek() != EOF) {
+            std::string str;
+            std::getline(std::cin, str);
             std::cout << str << std::endl;
             proccessCommand(str, brd, state);
         }
