@@ -145,27 +145,31 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
 
 inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
                              bool WL, bool WR, bool BL, bool BR,
-                             int preferredIndex, int &bestIndex, int depth) {
+                             uint8_t& bestFrom, uint8_t& bestTo, int depth) {
     auto start = std::chrono::high_resolution_clock::now();
     Callback ml[217];
     int count = 0; 
     moveGenCall<1, 0>(brd, ep, ml, count, WH, EP, WL, WR, BL,
                              BR);
-    ml[preferredIndex].value += 1000;
+
+    for(int i = 0; i < count; i++) {
+        if (ml[i].from == bestFrom && ml[i].to == bestTo) {
+            ml[i].value += 10000;
+            break;
+        }
+    }
+
     sortMoves(ml, count);
     int intitalScore = WH ? eval<true>(brd) : eval<false>(brd);
     int initialKey = create_hash(brd, WH);
     int bestScore = -99999;
-    int bestMoveIndex = 0;
+    int bestMoveIndex = -1;
     std::atomic<int> alpha(-99999);
     int beta = 99999;
 
 
     //#pragma omp parallel for
     for (int i = 0; i < count; i++) {
-        if (i == preferredIndex) {
-            continue;
-        }
         int score = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha.load(),
                                 intitalScore, initialKey, depth - 1);
         if (shouldStop.load()) {
@@ -181,7 +185,10 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
             }
         }
     }
-    bestIndex = bestMoveIndex;
+    if(bestMoveIndex != -1) {
+        bestFrom = ml[bestMoveIndex].from;
+        bestTo = ml[bestMoveIndex].to;
+    }
     auto end = std::chrono::high_resolution_clock::now();
     // Calculate duration
     std::chrono::duration<double> duration = end - start;
@@ -189,8 +196,14 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
     printf("info depth %d score cp %d\n", depth, bestScore);
     count = 0;
     moveGenCall<0, 0>(brd, ep, ml, count, WH, EP, WL, WR, BL, BR);
-    sortMoves(ml, count);
-    return ml[bestMoveIndex];
+
+    for (int i = 0; i < count; i++) {
+        if (ml[i].from == bestFrom && ml[i].to == bestTo) {
+            return ml[i];
+        }
+    }
+    assert(false);
+    return ml[0];
 }
 
 Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP,
@@ -201,10 +214,10 @@ Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP,
     shouldStop.store(false);
 
     Callback bestMove{};
-    Callback globalBestMove{};
 
     int maxReachedDepth = 0;
-    int bestMoveIndex = -1;
+    uint8_t bestMoveFrom = 0;
+    uint8_t bestMoveTo = 0;
     std::thread timerThread([&] {
         while (true) {
             auto now = clock::now();
@@ -222,7 +235,7 @@ Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP,
         if (shouldStop.load()) {
             break;
         }
-        bestMove = findBestMove(brd, ep, WH, EP, WL, WR, BL, BR,bestMoveIndex, bestMoveIndex,depth);
+        bestMove = findBestMove(brd, ep, WH, EP, WL, WR, BL, BR,bestMoveFrom,bestMoveTo,depth);
         maxReachedDepth = depth;
     }
 

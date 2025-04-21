@@ -157,7 +157,8 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
                                 whiteRight, blackLeft, blackRight, think);
 
 
-
+        std::cout << "bestmove " << convertMoveToUCI(*brd, ml.from, ml.to)
+                  << std::endl;
         MoveResult moveRes = ml.makeMove(*brd, ml.from, ml.to);
         brd.reset(new Board(moveRes.board));
         state.reset(new BoardState(moveRes.state));
