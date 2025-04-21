@@ -11,6 +11,7 @@
 #include <vector>
 bool white = false;
 bool hasBeenActivated = false;
+int historyTable[2][64][64] = {};
 
 std::string convertToUCI(int index) {
     int row = index / 8;
@@ -97,7 +98,7 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
             }
             brd.reset(new Board(loadFenBoard(fen.c_str())));
             state.reset(new BoardState(parseBoardState(fen.c_str())));
-            printBoard(*brd);
+            // printBoard(*brd);
             white = state->IsWhite;
 
             if (fenEnd < tokens.size()) {
@@ -116,8 +117,8 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
                     white = !white;
                 }
             }
-            printBoard(*brd);
-            printBitboard((*brd).Occ);
+            // printBoard(*brd);
+            // printBitboard((*brd).Occ);
         }
     } else if (tokens[0] == "isready") {
         std::cout << "readyok" << std::endl;
@@ -141,8 +142,8 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
         }
         int time = white ? whiteTime : blackTime;
         int inc = white ? whiteInc : blackInc;
-        double think = ((double)time) * 0.00002f + ((double)inc) * 0.001f;
-        printf("thinking time: %f\n", think);
+        double think = ((double)time) * 0.00001f + ((double)inc) * 0.0009f;
+        // printf("thinking time: %f\n", think);
         hasBeenActivated = true;
         // calculate next move
         bool whiteTurn = state->IsWhite;
@@ -156,19 +157,17 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
             iterative_deepening(*brd, 0, whiteTurn, enPassant, whiteLeft,
                                 whiteRight, blackLeft, blackRight, think);
 
-
         std::cout << "bestmove " << convertMoveToUCI(*brd, ml.from, ml.to)
                   << std::endl;
         MoveResult moveRes = ml.makeMove(*brd, ml.from, ml.to);
         brd.reset(new Board(moveRes.board));
         state.reset(new BoardState(moveRes.state));
 
-        std::cout << ttc << " " << ttf << std::endl;
+        // std::cout << ttc << " " << ttf << std::endl;
         auto end = std::chrono::high_resolution_clock::now();
         // Calculate duration
         std::chrono::duration<double> duration = end - start;
-        printf("total time %f\n", duration.count());
-
+        // printf("total time %f\n", duration.count());
     }
 }
 
@@ -181,7 +180,7 @@ void uciRunGame() {
         if (std::cin.peek() != EOF) {
             std::string str;
             std::getline(std::cin, str);
-            std::cout << str << std::endl;
+            // std::cout << str << std::endl;
             proccessCommand(str, brd, state);
         }
     }

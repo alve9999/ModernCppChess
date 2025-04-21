@@ -1,18 +1,19 @@
 #include "hash.hpp"
-#include <cstdint>
 #include <array>
+#include <cstdint>
 
-TranspositionTable TT(27);
+TranspositionTable TT(26);
 long ttc = 0;
 long ttf = 0;
 
 TranspositionTable::TranspositionTable(uint64_t log2_size) {
     this->size = 1ULL << log2_size;
-    this->Table = (entry*)calloc(this->size, sizeof(entry));
+    this->Table = (entry *)calloc(this->size, sizeof(entry));
 }
 
-void TranspositionTable::store(int depth, int val, int flag, uint64_t key, uint8_t from, uint8_t to) {
-    entry* node = &Table[key & (size - 1)];
+void TranspositionTable::store(int depth, int val, int flag, uint64_t key,
+                               uint8_t from, uint8_t to) {
+    entry *node = &Table[key & (size - 1)];
     if (node->key != key || depth >= node->depth) {
         node->depth = depth;
         node->value = val;
@@ -23,9 +24,10 @@ void TranspositionTable::store(int depth, int val, int flag, uint64_t key, uint8
     }
 }
 
-res TranspositionTable::probe_hash(int depth, int alpha, int beta, uint64_t key) {
-    __builtin_prefetch(&Table[(key + 1) & (size - 1)], 0, 1);
-    entry* node = &Table[key & (size - 1)];
+res TranspositionTable::probe_hash(int depth, int alpha, int beta,
+                                   uint64_t key) {
+    __builtin_prefetch(&Table[key & (size - 1)], 0, 1);
+    entry *node = &Table[key & (size - 1)];
     res result = {UNKNOWN, 255, 255};
     if (__builtin_expect(node->key == key, 1)) {
         result.from = node->from;
@@ -34,9 +36,16 @@ res TranspositionTable::probe_hash(int depth, int alpha, int beta, uint64_t key)
             ttc++;
             int val = node->value;
             switch (node->flags) {
-                case 0: result.value = val;
-                case 1: if (val <= alpha)  result.value = val; break;
-                case 2: if (val >= beta) result.value = val; break;
+            case 0:
+                result.value = val;
+            case 1:
+                if (val <= alpha)
+                    result.value = val;
+                break;
+            case 2:
+                if (val >= beta)
+                    result.value = val;
+                break;
             }
         }
     }
@@ -58,12 +67,12 @@ TranspositionTable::TranspositionTable(uint64_t log2_size) {
 
 void TranspositionTable::store(int depth, int val, int flag, uint64_t key) {
     bucket* node = &Table[key & (size - 1)];
-    
+
     node->always.depth = depth;
     node->always.value = val;
     node->always.flags = flag;
     node->always.key = key;
-    
+
     if (depth >= node->main.depth) {
         node->main.depth = depth;
         node->main.value = val;
@@ -72,10 +81,11 @@ void TranspositionTable::store(int depth, int val, int flag, uint64_t key) {
     }
 }
 
-int TranspositionTable::probe_hash(int depth, int alpha, int beta, uint64_t key) {
+int TranspositionTable::probe_hash(int depth, int alpha, int beta, uint64_t key)
+{
     __builtin_prefetch(&Table[(key + 1) & (size - 1)], 0, 1);
     bucket* node = &Table[key & (size - 1)];
-    
+
     if (__builtin_expect(node->main.key == key, 1)) {
         if (node->main.depth >= depth) {
             ttc++;
@@ -87,7 +97,7 @@ int TranspositionTable::probe_hash(int depth, int alpha, int beta, uint64_t key)
             }
         }
     }
-    
+
     if (__builtin_expect(node->always.key == key, 1)) {
         if (node->main.depth >= depth) {
             ttc++;
@@ -99,14 +109,14 @@ int TranspositionTable::probe_hash(int depth, int alpha, int beta, uint64_t key)
             }
         }
     }
-    
+
     ttf++;
     return UNKNOWN;
 }*/
 
-uint64_t create_hash(const Board& board, bool isWhite) {
+uint64_t create_hash(const Board &board, bool isWhite) {
     uint64_t key = 0;
-    
+
     for (int i = 0; i < 64; i++) {
         if ((board.WPawn >> i) & 1ULL) {
             key ^= random_key[i];
@@ -126,7 +136,7 @@ uint64_t create_hash(const Board& board, bool isWhite) {
         if ((board.WKing >> i) & 1ULL) {
             key ^= random_key[i + 320];
         }
-        
+
         if ((board.BPawn >> i) & 1ULL) {
             key ^= random_key[i + 384];
         }
@@ -146,10 +156,10 @@ uint64_t create_hash(const Board& board, bool isWhite) {
             key ^= random_key[i + 704];
         }
     }
-    
+
     if (isWhite) {
         key ^= random_key[768];
     }
-    
+
     return key;
 }
