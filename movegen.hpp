@@ -44,7 +44,7 @@ static int values[6] = {1, 3, 3, 5, 9, 0};
 #define PROMOTE 9
 #define CASTLE 0
 #define EP_VAL 1
-#define CAPTURE 7
+#define CAPTURE 0
 
 template <bool IsWhite>
 constexpr inline int getVictimValue(const Board &brd, int to) noexcept {

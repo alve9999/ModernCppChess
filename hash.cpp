@@ -11,33 +11,37 @@ TranspositionTable::TranspositionTable(uint64_t log2_size) {
     this->Table = (entry*)calloc(this->size, sizeof(entry));
 }
 
-void TranspositionTable::store(int depth, int val, int flag, uint64_t key) {
+void TranspositionTable::store(int depth, int val, int flag, uint64_t key, uint8_t from, uint8_t to) {
     entry* node = &Table[key & (size - 1)];
     if (node->key != key || depth >= node->depth) {
         node->depth = depth;
         node->value = val;
         node->flags = flag;
         node->key = key;
+        node->from = from;
+        node->to = to;
     }
 }
 
-int TranspositionTable::probe_hash(int depth, int alpha, int beta, uint64_t key) {
+res TranspositionTable::probe_hash(int depth, int alpha, int beta, uint64_t key) {
     __builtin_prefetch(&Table[(key + 1) & (size - 1)], 0, 1);
     entry* node = &Table[key & (size - 1)];
-
+    res result = {UNKNOWN, 255, 255};
     if (__builtin_expect(node->key == key, 1)) {
+        result.from = node->from;
+        result.to = node->to;
         if (node->depth >= depth) {
             ttc++;
             int val = node->value;
             switch (node->flags) {
-                case 0: return val;
-                case 1: if (val <= alpha) return val; break;
-                case 2: if (val >= beta) return val; break;
+                case 0: result.value = val;
+                case 1: if (val <= alpha)  result.value = val; break;
+                case 2: if (val >= beta) result.value = val; break;
             }
         }
     }
     ttf++;
-    return UNKNOWN;
+    return result;
 }
 
 /*

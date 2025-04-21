@@ -26,6 +26,9 @@ struct entry {
     int32_t value;
     int8_t depth;
     int8_t flags;
+    uint8_t to;
+    uint8_t from;
+
 };
 
 static_assert(sizeof(entry) == 16, "entry must be 16 bytes");
@@ -36,6 +39,12 @@ struct bucket {
     entry always;
 };
 */
+
+struct res {
+    int32_t value;
+    uint8_t from;
+    uint8_t to;
+};
 class TranspositionTable {
 public:
     uint64_t size;
@@ -43,8 +52,8 @@ public:
     entry* Table;
 	TranspositionTable(uint64_t size);
 
-    void store(int depth, int val, int flag, uint64_t key);
-    int probe_hash(int depth, int alpha, int beta, uint64_t key);
+    void store(int depth, int val, int flag, uint64_t key, uint8_t from, uint8_t to);
+    res probe_hash(int depth, int alpha, int beta, uint64_t key);
 };
 
 uint64_t create_hash(const Board& board, bool isWhite);

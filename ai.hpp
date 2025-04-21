@@ -68,11 +68,15 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
         return quiescence<status>(brd, ep, alpha, beta, score, key,0);
     } else {
         int hashf = 1;
-        if (depth != 1) {
-            int val = TT.probe_hash(depth, alpha, beta, key);
 
-            if (val != UNKNOWN) {
-                return val;
+        uint8_t fromHash = 255;
+        uint8_t toHash = 255;
+        if (depth != 1) {
+            res val = TT.probe_hash(depth, alpha, beta, key);
+            fromHash = val.from;
+            toHash = val.to;
+            if (val.value != UNKNOWN) {
+                return val.value;
             }
         }
 
@@ -81,6 +85,16 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
 
         uint64_t kingBan =
             genMoves<status, 1, 0>(brd, ep, ml, count);
+
+        if (fromHash != 255 && toHash != 255) {
+            for(int i = 0; i < count; i++) {
+                if (ml[i].from == fromHash && ml[i].to == toHash) {
+                    ml[i].value += 10000;
+                    break;
+                }
+            }
+        }
+
         sortMoves(ml, count);
 
         bool inCheck = status.IsWhite ? (brd.WKing & kingBan) != 0
@@ -94,18 +108,24 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
         }
 
         int maxEval = -99999;
+        int maxIndex = -1;
 
         for (int i = 0; i < count; i++) {
             int eval = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha,
                                    -score, key, depth - 1);
-            maxEval = std::max(maxEval, eval);
+
+            if(eval>maxEval){
+                maxEval = eval;
+                maxIndex = i;
+            }
 
             if (beta <= eval) {
                 if(depth > 1) {
                     if (shouldStop.load()) {
                         return STOP;
                     }
-                    TT.store(depth, eval, 2, key);
+                    TT.store(depth, eval, 2, key, ml[i].from,
+                             ml[i].to);
                 }
                 return maxEval;
             }
@@ -117,7 +137,8 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
         if (shouldStop.load()) {
             return STOP;
         }
-        TT.store(depth, maxEval, hashf, key);
+        TT.store(depth, maxEval, hashf, key, ml[maxIndex].from,
+                 ml[maxIndex].to);
         return maxEval;
     }
 }
@@ -130,6 +151,7 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
     int count = 0; 
     moveGenCall<1, 0>(brd, ep, ml, count, WH, EP, WL, WR, BL,
                              BR);
+    ml[preferredIndex].value += 1000;
     sortMoves(ml, count);
     int intitalScore = WH ? eval<true>(brd) : eval<false>(brd);
     int initialKey = create_hash(brd, WH);
@@ -138,22 +160,6 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
     std::atomic<int> alpha(-99999);
     int beta = 99999;
 
-    if (preferredIndex >= 0 && preferredIndex < count) {
-        int score = -ml[preferredIndex].move(
-            brd, ml[preferredIndex].from, ml[preferredIndex].to, -beta,
-            -alpha.load(), intitalScore, initialKey, depth - 1);
-        if (shouldStop.load()) {
-            count = 0;
-            moveGenCall<0, 0>(brd, ep, ml, count, WH, EP, WL, WR,
-                                 BL, BR);
-            sortMoves(ml, count);
-            printf("returning preferred move %d\n", preferredIndex);
-            return ml[preferredIndex];
-        }
-        bestScore = score;
-        bestMoveIndex = preferredIndex;
-        alpha.store(score);
-    }
 
     //#pragma omp parallel for
     for (int i = 0; i < count; i++) {
