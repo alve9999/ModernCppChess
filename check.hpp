@@ -70,8 +70,10 @@ _fast static void slidingPieceCheckmask(const Board &brd, uint64_t &pinHV,
         if (slidingCount >= 2) {
             checkmask = 0;
         }
-        const uint64_t path = kingPath[64 * kingPos + __builtin_ctzll(sliding)];
-        checkmask &= (!static_cast<bool>(sliding)) * ONES | path;
+        else{
+            const uint64_t path = kingPath[64 * kingPos + __builtin_ctzll(sliding)];
+            checkmask &= (!static_cast<bool>(sliding)) * ONES | path;
+        }
     } else {
         uint64_t sliding = 0;
         if (RookMask[kingPos] & (brd.WRook | brd.WQueen)) {
@@ -99,8 +101,10 @@ _fast static void slidingPieceCheckmask(const Board &brd, uint64_t &pinHV,
         if (slidingCount >= 2) {
             checkmask = 0;
         }
-        const uint64_t path = kingPath[64 * kingPos + __builtin_ctzll(sliding)];
-        checkmask &= (!static_cast<bool>(sliding)) * ONES | path;
+        else{
+            const uint64_t path = kingPath[64 * kingPos + __builtin_ctzll(sliding)];
+            checkmask &= (!static_cast<bool>(sliding)) * ONES | path;
+        }
     }
 }
 

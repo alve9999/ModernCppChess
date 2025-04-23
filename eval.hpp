@@ -45,7 +45,7 @@ template <bool IsWhite> int evalSide(const Board &brd) {
     return score;
 }
 
-template <bool IsWhite> int eval(const Board &brd) {
+template <bool IsWhite> int evaluate(const Board &brd) {
     int whiteScore = evalSide<true>(brd);
     int blackScore = evalSide<false>(brd);
 
