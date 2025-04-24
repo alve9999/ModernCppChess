@@ -11,6 +11,8 @@
 #include <omp.h>
 #include <thread>
 #include <cstring>
+#include "check.hpp"
+
 
 extern std::atomic<bool> shouldStop;
 extern long node_count;
@@ -136,9 +138,16 @@ void printVector(const std::vector<uint64_t>& vec) {
 template <class BoardState status>
 inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
                    uint64_t key, const int depth,int irreversibleCount,int ply,bool isPVNode,bool isCapture) noexcept {
+    uint64_t kingBan = 0;
+    if (depth >= 1) {
+        generateKingBan<status.IsWhite>(brd, kingBan);
+    }
+    bool inCheck = status.IsWhite ? (brd.WKing & kingBan) != 0
+                                    : (brd.BKing & kingBan) != 0;
+
     node_count++;
     //maybe (!isCapture)
-    if ((!isPVNode) && (depth >= 1) && (depth <= 4)) {
+    if ((!isPVNode) && (!inCheck) && (depth >= 1) && (depth <= 4)) {
         int staticEval = -score;
         int margin = 150 * depth;
         
@@ -167,6 +176,31 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
                 return (status.IsWhite==white)?-CONTEMPT_FACTOR:CONTEMPT_FACTOR;
             }
         }
+
+        bool hasSufficientMaterial = true;
+        if (status.IsWhite) {
+            hasSufficientMaterial = (brd.WQueen | brd.WRook | brd.WBishop | brd.WKnight) != 0;
+        } else {
+            hasSufficientMaterial = (brd.BQueen | brd.BRook | brd.BBishop | brd.BKnight) != 0;
+        }
+        
+        //bool inWindow = (alpha == (beta - 1));
+        if (depth >= 3 && !inCheck && !isPVNode && !isCapture && hasSufficientMaterial) {
+            const int R = 3;
+            
+            constexpr BoardState NextState = BoardState(!status.IsWhite, false ,status.WLC, status.WRC, status.BLC, status.BRC);
+            
+            int nullMoveScore = -minimax<NextState>(brd, ep, -beta, -beta+1, -score, toggle_side_to_move(key), depth - R, 
+                                                    irreversibleCount+1, ply+1, false, false);
+            
+            if (nullMoveScore >= beta) {
+                prevHash.pop_back();
+                return nullMoveScore;
+            }
+        }
+
+
+
         int hashf = 1;
 
         MovePV expectedPvMove;
@@ -209,9 +243,6 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
 
         sortMoves(ml, count);
 
-
-        bool inCheck = status.IsWhite ? (brd.WKing & kingBan) != 0
-                                      : (brd.BKing & kingBan) != 0;
         bool outOfMoves = (count == 0);
         if (outOfMoves && inCheck) {
             prevHash.pop_back();
@@ -224,6 +255,10 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
 
         int maxIndex = -1;
         bool firstMove = true;
+
+
+
+
 
         for (int i = 0; i < count; i++) {
             int eval;
@@ -434,7 +469,7 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
             }
 
         }
-    //}
+   // }
     if (bestMoveIndex != -1) {
         bestFrom = ml[bestMoveIndex].from;
         bestTo = ml[bestMoveIndex].to;
