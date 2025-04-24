@@ -137,7 +137,7 @@ template <class BoardState status>
 inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
                    uint64_t key, const int depth,int irreversibleCount,int ply,bool isPVNode,bool isCapture) noexcept {
     node_count++;
-
+    //maybe (!isCapture)
     if ((!isPVNode) && (depth >= 1) && (depth <= 4)) {
         int staticEval = -score;
         int margin = 150 * depth;
@@ -149,6 +149,10 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
     
     if (ply <= MAX_SEARCH_DEPTH) {
         pvLength[ply] = 0;
+    }
+
+    if (shouldStop.load()) {
+        return STOP;
     }
 
     if (depth == 0) {
@@ -261,11 +265,6 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
                 return beta;
             }
 
-            int margin = 150*depth;
-            if((!capture) && (!isPVNode) && (!inCheck) && (eval >= (beta + margin))){
-                printf("fultility prunign\n");
-                return eval;
-            }
             
             if (eval > alpha) {
                 maxIndex = i;
