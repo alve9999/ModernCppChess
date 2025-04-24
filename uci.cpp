@@ -112,14 +112,18 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
     } else if (tokens[0] == "isready") {
         std::cout << "readyok" << std::endl;
     } else if (tokens[0] == "uci") {
-        std::cout << "id name chess_engien\nid author Alve Lindell\nuciok\n";
+        std::cout << "id name chess_engien\nid author Alve Lindell\nuciok" << std::endl;
     } else if (tokens[0] == "go") {
         auto start = std::chrono::high_resolution_clock::now();
         int whiteTime = 100000000;
         int blackTime = 100000000;
         int whiteInc = 1000;
         int blackInc = 1000;
+        int moveTime = 0;
         for (size_t i = 1; i + 1 < tokens.size(); i++) {
+            if(tokens[i] == "movetime"){
+                moveTime = std::stoi(tokens[i + 1]);
+            }
             if (tokens[i] == "wtime")
                 whiteTime = std::stoi(tokens[i + 1]);
             if (tokens[i] == "binc")
@@ -132,6 +136,9 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
         int time = white ? whiteTime : blackTime;
         int inc = white ? whiteInc : blackInc;
         double think = ((double)time) * 0.00001f + ((double)inc) * 0.0009f;
+        if(moveTime > 0){
+            think = ((double)moveTime/1000.0f)*0.9f;
+        }
         // printf("thinking time: %f\n", think);
         hasBeenActivated = true;
         // calculate next move
@@ -171,7 +178,10 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
     }
 }
 
+#include <fstream>
+
 void uciRunGame() {
+
     auto brd = std::make_unique<Board>(loadFenBoard(
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 "));
     auto state = std::make_unique<BoardState>(parseBoardState(
@@ -182,7 +192,6 @@ void uciRunGame() {
         if (std::cin.peek() != EOF) {
             std::string str;
             std::getline(std::cin, str);
-            // std::cout << str << std::endl;
             proccessCommand(str, brd, state, irreversibleCount);
         }
     }
