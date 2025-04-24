@@ -162,8 +162,8 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
 
 
         prevHash.push_back(create_hash(*brd, state->IsWhite));
-        printVector(prevHash);
-        std::cout << ttc << " " << ttf << std::endl;
+        //printVector(prevHash);
+        //std::cout << ttc << " " << ttf << std::endl;
         auto end = std::chrono::high_resolution_clock::now();
         // Calculate duration
         std::chrono::duration<double> duration = end - start;

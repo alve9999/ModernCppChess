@@ -9,6 +9,7 @@ long ttf = 0;
 TranspositionTable::TranspositionTable(uint64_t log2_size) {
     this->size = 1ULL << log2_size;
     this->Table = (entry *)calloc(this->size, sizeof(entry));
+
 }
 
 void TranspositionTable::store(int depth, int val, int flag, uint64_t key,
@@ -26,10 +27,9 @@ void TranspositionTable::store(int depth, int val, int flag, uint64_t key,
 
 res TranspositionTable::probe_hash(int depth, int alpha, int beta,
                                    uint64_t key) {
-    __builtin_prefetch(&Table[key & (size - 1)], 0, 1);
-    entry *node = &Table[key & (size - 1)];
+    volatile entry *node = &Table[key & (size - 1)];
     res result = {UNKNOWN, 255, 255};
-    if (__builtin_expect(node->key == key, 1)) {
+    if (node->key == key) {
         result.from = node->from;
         result.to = node->to;
         if (node->depth >= depth) {
@@ -38,6 +38,7 @@ res TranspositionTable::probe_hash(int depth, int alpha, int beta,
             switch (node->flags) {
             case 0:
                 result.value = val;
+                break;
             case 1:
                 if (val <= alpha)
                     result.value = val;

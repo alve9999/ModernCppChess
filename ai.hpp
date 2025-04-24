@@ -76,7 +76,7 @@ inline void update_history(int from, int to, int depth) {
 
 template <class BoardState status>
 inline int quiescence(const Board &brd, int ep, int alpha, int beta, int score,
-                      uint64_t key, int qdepth, int irreversibleCount, int ply, bool isPVNode) noexcept {
+                      uint64_t key, int qdepth, int irreversibleCount, int ply, bool isPVNode, bool isCapture) noexcept {
     node_count++;
 
     int standPat = -score;
@@ -132,23 +132,29 @@ void printVector(const std::vector<uint64_t>& vec) {
     std::cout << '\n';
 }
 
+
 template <class BoardState status>
 inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
-                   uint64_t key, const int depth,int irreversibleCount,int ply,bool isPVNode) noexcept {
+                   uint64_t key, const int depth,int irreversibleCount,int ply,bool isPVNode,bool isCapture) noexcept {
     node_count++;
 
+    if ((!isPVNode) && (depth >= 1) && (depth <= 4)) {
+        int staticEval = -score;
+        int margin = 150 * depth;
+        
+        if (staticEval >= beta + margin) {
+            return staticEval;
+        }
+    }
+    
     if (ply <= MAX_SEARCH_DEPTH) {
         pvLength[ply] = 0;
-    }
-
-    if (shouldStop.load()) {
-        return STOP;
     }
 
     if (depth == 0) {
         //return -score;
         return quiescence<status>(brd, ep, alpha, beta, score, key, 0,
-                                  irreversibleCount, ply + 1, isPVNode);
+                                  irreversibleCount, ply + 1, isPVNode,0);
     } else {
         prevHash.push_back(key);
         if(irreversibleCount >= 3){
@@ -199,6 +205,7 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
 
         sortMoves(ml, count);
 
+
         bool inCheck = status.IsWhite ? (brd.WKing & kingBan) != 0
                                       : (brd.BKing & kingBan) != 0;
         bool outOfMoves = (count == 0);
@@ -230,10 +237,17 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
                                       -score, key, depth - 1, irreversibleCount,ply+1,isPVNode);
                 }
             }
+
             firstMove = false;
+            
+            bool capture = false;
+            if ((brd.Occ & (1ULL << ml[i].to))) {
+                capture = true;
+            }
+            
             //move is to good
             if (eval >= beta) {
-                if (!(brd.Occ & (1ULL << ml[i].to))) {
+                if (!capture) {
                     update_history<status.IsWhite>(ml[i].from, ml[i].to, depth);
                 }
                 if (depth > 1) {
@@ -247,6 +261,11 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
                 return beta;
             }
 
+            int margin = 150*depth;
+            if((!capture) && (!isPVNode) && (!inCheck) && (eval >= (beta + margin))){
+                printf("fultility prunign\n");
+                return eval;
+            }
             
             if (eval > alpha) {
                 maxIndex = i;
@@ -330,14 +349,16 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
 
     sortMoves(ml, count);
     
-    /*if (depth > 3) {
+    /*if (depth > 5) {
         //aspiration search
         int window = 50;
-        alpha = previousEval - window;
-        beta = previousEval + window;
+        int lo = previousEval - window, hi = previousEval + window;
+
         bool windowFailed = true;
         int windowIterations = 0;
-        while (windowFailed && windowIterations < 4) {
+        while (windowFailed && (windowIterations < 4)) {
+            alpha = lo; 
+            beta = hi;
             firstMove = true;
             windowIterations++;
             windowFailed = false;
@@ -347,13 +368,9 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
                 int eval; 
 
                 eval = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha,
-                                        -score, key, depth - 1, irreversibleCount,1,firstMove);
+                                        score, key, depth - 1, irreversibleCount,1,firstMove);
                 firstMove=false;
 
-                if (shouldStop.load()){
-                    break;
-                }
-                
                 if (eval > bestEval) {
                     bestEval = eval;
                     bestMoveIndex = i;
@@ -368,10 +385,14 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
                         pvLength[0] = 1;
                     }
                 }
+                if(bestEval >= beta || shouldStop.load()){
+                    break;
+                }
 
             }
             
-            if (bestEval <= alpha || bestEval >= beta) {
+            if (bestEval <= lo || bestEval >= hi) {
+                printf("Window failed: %d %d %d\n", lo, hi, bestEval);
                 windowFailed = true;
                 
                 if (bestEval <= alpha){
@@ -382,10 +403,12 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
                 }
                 
                 window *= 2;
+                lo = previousEval - window;
+                hi = previousEval + window;
             }
         }
     }
-    if(depth < 4){*/
+    if(depth < 6){*/
         for (int i = 0; i < count; i++) {
             int eval; 
 
@@ -425,7 +448,7 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
     int nps = ((double)node_count) / duration.count();
     if (!shouldStop.load()) {
         TT.store(depth, bestEval, 0, key, bestFrom, bestTo);
-        printf("info depth %d score cp %d nodes %ld nps %d time %d pv ", depth,
+        printf("info depth %d score cp %d nodes %ld nps %d time %d", depth,
                bestEval, node_count, nps, (int)(1000 * duration.count()));
         //for(int i = 0; i < pvLength[0]; i++) {
         //    printf("%s ", convertMoveToUCI(brd, pvTable[0][i].from, pvTable[0][i].to).c_str());
