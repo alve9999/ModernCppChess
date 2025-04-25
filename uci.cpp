@@ -14,6 +14,9 @@ bool white = false;
 bool hasBeenActivated = false;
 int historyTable[2][64][64] = {};
 std::vector<uint64_t> prevHash = {};
+int mg_phase = 0;
+int eg_phase = 0;
+
 
 void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
                      std::unique_ptr<BoardState> &state,int &irreversibleCount) {

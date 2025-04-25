@@ -16,6 +16,7 @@
 
 extern std::atomic<bool> shouldStop;
 extern long node_count;
+
 long node_count = 0;
 std::atomic<bool> shouldStop(false);
 #define STOP -7777
@@ -127,17 +128,21 @@ inline int quiescence(const Board &brd, int ep, int alpha, int beta, int score,
     return alpha;
 }
 
-void printVector(const std::vector<uint64_t>& vec) {
-    for (uint64_t val : vec) {
-        std::cout << val << ' ';
-    }
-    std::cout << '\n';
-}
-
-
 template <class BoardState status>
 inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
                    uint64_t key, const int depth,int irreversibleCount,int ply,bool isPVNode,bool isCapture) noexcept {
+    /*if(evaluate<status.IsWhite>(brd) != -score){
+        printf("Error in eval\n");
+        printf("Score: %d\n", score);
+        printf("Eval: %d\n", -evaluate<status.IsWhite>(brd));
+    }
+    if(key!=create_hash(brd, status.IsWhite)){
+        printf("Error in hash\n");
+        printf("Key: %lu\n", key);
+        printf("Hash: %lu\n", create_hash(brd, status.IsWhite));
+    }*/
+
+
     uint64_t kingBan = 0;
     if (depth >= 1) {
         generateKingBan<status.IsWhite>(brd, kingBan);
@@ -258,31 +263,56 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
 
 
 
-
-
         for (int i = 0; i < count; i++) {
-            int eval;
 
-
-            if (firstMove) {
-                eval = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha,
-                                   -score, key, depth - 1, irreversibleCount,ply+1,isPVNode);
-            } else {
-                eval = -ml[i].move(brd, ml[i].from, ml[i].to, -alpha - 1, -alpha,
-                                  -score, key, depth - 1, irreversibleCount,ply+1,false);
-                
-                if (eval > alpha && eval < beta) {
-                    eval = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha,
-                                      -score, key, depth - 1, irreversibleCount,ply+1,isPVNode);
-                }
-            }
-
-            firstMove = false;
-            
             bool capture = false;
+
             if ((brd.Occ & (1ULL << ml[i].to))) {
                 capture = true;
             }
+
+            int eval;
+            
+            /*bool doFullSearch = true;
+            int reduction = 0;
+
+            if (!isPVNode && depth >= 3 && i >= 3) {
+                if (capture || inCheck) {
+                    reduction = 1; 
+                } else {
+                    reduction = 2;
+                }
+            }
+
+
+            if (reduction > 0) {
+                doFullSearch = false;
+                eval = -ml[i].move(brd, ml[i].from, ml[i].to, -alpha - 1, -alpha,
+                                   -score, key, depth - reduction - 1, irreversibleCount,ply+1,false);
+                if (eval >= alpha) {
+                    doFullSearch = true;
+                }
+            }
+
+            if(doFullSearch){*/
+                if (firstMove) {
+                    eval = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha,
+                                    -score, key, depth - 1, irreversibleCount,ply+1,isPVNode);
+                } else {
+                    eval = -ml[i].move(brd, ml[i].from, ml[i].to, -alpha - 1, -alpha,
+                                    -score, key, depth - 1, irreversibleCount,ply+1,false);
+                    
+                    if (eval > alpha && eval < beta) {
+                        eval = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha,
+                                        -score, key, depth - 1, irreversibleCount,ply+1,isPVNode);
+                    }
+                }
+            //}
+
+
+            firstMove = false;
+            
+
             
             //move is to good
             if (eval >= beta) {
@@ -346,6 +376,8 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
 
 
     int score;
+    mg_phase = calculatePhaseInterpolation(brd);
+    eg_phase = 24 - mg_phase;
     if (WH){
         score = evaluate<true>(brd);
     }
@@ -511,7 +543,7 @@ Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP,
     shouldStop.store(false);
 
     Callback bestMove{};
-
+    printf("phase %d", calculatePhaseInterpolation(brd));
     int eval = 0;
     std::thread timerThread([&] {
         while (true) {
