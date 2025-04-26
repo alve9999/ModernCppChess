@@ -11,7 +11,7 @@
 extern int historyTable[2][64][64];
 
 using SearchMoveFunc = int (*)(const Board &, int, int, int, int, int, uint64_t,
-                               int, int,int, bool);
+                               int, int, int, bool);
 using MakeMoveFunc = MoveResult (*)(const Board &, int, int);
 inline std::string converter(int index) {
     int row = index / 8;
@@ -25,8 +25,8 @@ inline std::string converter(int index) {
 }
 
 template <class BoardState status>
-inline void moveHandle(const Board &brd,const MakeMoveFunc &move, Callback *ml, int &count,
-                       int from, int to, int value) noexcept {
+inline void moveHandle(const Board &brd, const MakeMoveFunc &move, Callback *ml,
+                       int &count, int from, int to, int value) noexcept {
     Callback &cb = ml[count++];
     cb.makeMove = move;
     cb.from = from;
@@ -35,9 +35,10 @@ inline void moveHandle(const Board &brd,const MakeMoveFunc &move, Callback *ml, 
 }
 
 template <class BoardState status>
-_fast void moveHandle(const Board &brd,const SearchMoveFunc &move, Callback *ml, int &count,
-                      int from, int to, int value) noexcept {
-    
+_fast void moveHandle(const Board &brd, const SearchMoveFunc &move,
+                      Callback *ml, int &count, int from, int to, int value,
+                      bool capture, bool promotions) noexcept {
+
     if ((brd.BKing & (1ULL << to))) {
         assert(false);
     }
@@ -49,15 +50,17 @@ _fast void moveHandle(const Board &brd,const SearchMoveFunc &move, Callback *ml,
     cb.move = move;
     cb.from = from;
     cb.to = to;
+    cb.capture = capture;
+    cb.promotion = promotions;
     int history = historyTable[status.IsWhite][from][to];
     cb.value = value + history;
 }
 
-static int values[6] = {100, 300, 300, 500, 900, 0};
-#define PROMOTE 800
-#define CASTLE 50
-#define EP_VAL 100
-#define CAPTURE 500
+static int values[6] = {10000, 30000, 30000, 50000, 90000, 0};
+#define PROMOTE 80000
+#define CASTLE 5000
+#define EP_VAL 10000
+#define CAPTURE 50000
 
 template <bool IsWhite>
 constexpr inline int getVictimValue(const Board &brd, int to) noexcept {
@@ -130,20 +133,20 @@ _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
             if constexpr (status.IsWhite) {
                 const int from = to - 8;
                 if constexpr (search) {
-                    moveHandle<status>(brd,promote<status>, ml, count, from, to,
-                                       PROMOTE);
+                    moveHandle<status>(brd, promote<status>, ml, count, from,
+                                       to, PROMOTE, 0, 1);
                 } else {
-                    moveHandle<status>(brd,makePromote<status>, ml, count, from, to,
-                                       PROMOTE);
+                    moveHandle<status>(brd, makePromote<status>, ml, count,
+                                       from, to, PROMOTE);
                 }
             } else {
                 const int from = to + 8;
                 if constexpr (search) {
-                    moveHandle<status>(brd,promote<status>, ml, count, from, to,
-                                       PROMOTE);
+                    moveHandle<status>(brd, promote<status>, ml, count, from,
+                                       to, PROMOTE, 0, 1);
                 } else {
-                    moveHandle<status>(brd,makePromote<status>, ml, count, from, to,
-                                       PROMOTE);
+                    moveHandle<status>(brd, makePromote<status>, ml, count,
+                                       from, to, PROMOTE);
                 }
             }
         }
@@ -152,20 +155,20 @@ _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
             if constexpr (status.IsWhite) {
                 const int from = to - 8;
                 if constexpr (search) {
-                    moveHandle<status>(brd,pawnMove<status>, ml, count, from, to,
-                                       0);
+                    moveHandle<status>(brd, pawnMove<status>, ml, count, from,
+                                       to, 0, 0, 0);
                 } else {
-                    moveHandle<status>(brd,makePawnMove<status>, ml, count, from,
-                                       to, 0);
+                    moveHandle<status>(brd, makePawnMove<status>, ml, count,
+                                       from, to, 0);
                 }
             } else {
                 const int from = to + 8;
                 if constexpr (search) {
-                    moveHandle<status>(brd,pawnMove<status>, ml, count, from, to,
-                                       0);
+                    moveHandle<status>(brd, pawnMove<status>, ml, count, from,
+                                       to, 0, 0, 0);
                 } else {
-                    moveHandle<status>(brd,makePawnMove<status>, ml, count, from,
-                                       to, 0);
+                    moveHandle<status>(brd, makePawnMove<status>, ml, count,
+                                       from, to, 0);
                 }
             }
         }
@@ -180,20 +183,20 @@ _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
             if constexpr (status.IsWhite) {
                 const int from = to - 16;
                 if constexpr (search) {
-                    moveHandle<status>(brd,pawnDoubleMove<status>, ml, count, from,
-                                       to, 0);
+                    moveHandle<status>(brd, pawnDoubleMove<status>, ml, count,
+                                       from, to, 0, 0, 0);
                 } else {
-                    moveHandle<status>(brd,makePawnDoubleMove<status>, ml, count,
-                                       from, to, 0);
+                    moveHandle<status>(brd, makePawnDoubleMove<status>, ml,
+                                       count, from, to, 0);
                 }
             } else {
                 const int from = to + 16;
                 if constexpr (search) {
-                    moveHandle<status>(brd,pawnDoubleMove<status>, ml, count, from,
-                                       to, 0);
+                    moveHandle<status>(brd, pawnDoubleMove<status>, ml, count,
+                                       from, to, 0, 0, 0);
                 } else {
-                    moveHandle<status>(brd,makePawnDoubleMove<status>, ml, count,
-                                       from, to, 0);
+                    moveHandle<status>(brd, makePawnDoubleMove<status>, ml,
+                                       count, from, to, 0);
                 }
             }
         }
@@ -209,21 +212,21 @@ _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
         if constexpr (status.IsWhite) {
             const int from = to - 7;
             if constexpr (search) {
-                moveHandle<status>(brd,promoteCapture<status, capturesOnly>, ml,
-                                   count, from, to, value);
+                moveHandle<status>(brd, promoteCapture<status, capturesOnly>,
+                                   ml, count, from, to, value, 1, 1);
             } else {
-                moveHandle<status>(brd,makePromote<status>, ml, count, from, to,
-                                   value);
+                moveHandle<status>(brd, makePromote<status>, ml, count, from,
+                                   to, value);
             }
 
         } else {
             const int from = to + 9;
             if constexpr (search) {
-                moveHandle<status>(brd,promoteCapture<status, capturesOnly>, ml,
-                                   count, from, to, value);
+                moveHandle<status>(brd, promoteCapture<status, capturesOnly>,
+                                   ml, count, from, to, value, 1, 1);
             } else {
-                moveHandle<status>(brd,makePromote<status>, ml, count, from, to,
-                                   value);
+                moveHandle<status>(brd, makePromote<status>, ml, count, from,
+                                   to, value);
             }
         }
     }
@@ -233,20 +236,20 @@ _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
         if constexpr (status.IsWhite) {
             const int from = to - 7;
             if constexpr (search) {
-                moveHandle<status>(brd,pawnCapture<status, capturesOnly>, ml, count,
-                                   from, to, value);
+                moveHandle<status>(brd, pawnCapture<status, capturesOnly>, ml,
+                                   count, from, to, value, 1, 0);
             } else {
-                moveHandle<status>(brd,makePawnCapture<status>, ml, count, from, to,
-                                   value);
+                moveHandle<status>(brd, makePawnCapture<status>, ml, count,
+                                   from, to, value);
             }
         } else {
             const int from = to + 9;
             if constexpr (search) {
-                moveHandle<status>(brd,pawnCapture<status, capturesOnly>, ml, count,
-                                   from, to, value);
+                moveHandle<status>(brd, pawnCapture<status, capturesOnly>, ml,
+                                   count, from, to, value, 1, 0);
             } else {
-                moveHandle<status>(brd,makePawnCapture<status>, ml, count, from, to,
-                                   value);
+                moveHandle<status>(brd, makePawnCapture<status>, ml, count,
+                                   from, to, value);
             }
         }
     }
@@ -261,20 +264,20 @@ _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
         if constexpr (status.IsWhite) {
             const int from = to - 9;
             if constexpr (search) {
-                moveHandle<status>(brd,promoteCapture<status, capturesOnly>, ml,
-                                   count, from, to, value);
+                moveHandle<status>(brd, promoteCapture<status, capturesOnly>,
+                                   ml, count, from, to, value, 1, 1);
             } else {
-                moveHandle<status>(brd,makePromoteCapture<status>, ml, count, from,
-                                   to, value);
+                moveHandle<status>(brd, makePromoteCapture<status>, ml, count,
+                                   from, to, value);
             }
         } else {
             const int from = to + 7;
             if constexpr (search) {
-                moveHandle<status>(brd,promoteCapture<status, capturesOnly>, ml,
-                                   count, from, to, value);
+                moveHandle<status>(brd, promoteCapture<status, capturesOnly>,
+                                   ml, count, from, to, value, 1, 1);
             } else {
-                moveHandle<status>(brd,makePromoteCapture<status>, ml, count, from,
-                                   to, value);
+                moveHandle<status>(brd, makePromoteCapture<status>, ml, count,
+                                   from, to, value);
             }
         }
     }
@@ -284,20 +287,20 @@ _fast static void pawnMoves(const Board &brd, uint64_t chessMask, int64_t pinHV,
         if constexpr (status.IsWhite) {
             const int from = to - 9;
             if constexpr (search) {
-                moveHandle<status>(brd,pawnCapture<status, capturesOnly>, ml, count,
-                                   from, to, value);
+                moveHandle<status>(brd, pawnCapture<status, capturesOnly>, ml,
+                                   count, from, to, value, 1, 0);
             } else {
-                moveHandle<status>(brd,makePawnCapture<status>, ml, count, from, to,
-                                   value);
+                moveHandle<status>(brd, makePawnCapture<status>, ml, count,
+                                   from, to, value);
             }
         } else {
             const int from = to + 7;
             if constexpr (search) {
-                moveHandle<status>(brd,pawnCapture<status, capturesOnly>, ml, count,
-                                   from, to, value);
+                moveHandle<status>(brd, pawnCapture<status, capturesOnly>, ml,
+                                   count, from, to, value, 1, 0);
             } else {
-                moveHandle<status>(brd,makePawnCapture<status>, ml, count, from, to,
-                                   value);
+                moveHandle<status>(brd, makePawnCapture<status>, ml, count,
+                                   from, to, value);
             }
         }
     }
@@ -323,11 +326,11 @@ _fast static void knightMoves(const Board &brd, uint64_t chessMask,
             Bitloop(attacks) {
                 const int to = __builtin_ctzll(attacks);
                 if constexpr (search) {
-                    moveHandle<status>(brd,knightMove<status>, ml, count, from, to,
-                                       0);
+                    moveHandle<status>(brd, knightMove<status>, ml, count, from,
+                                       to, 0, 0, 0);
                 } else {
-                    moveHandle<status>(brd,makeKnightMove<status>, ml, count, from,
-                                       to, 0);
+                    moveHandle<status>(brd, makeKnightMove<status>, ml, count,
+                                       from, to, 0);
                 }
             }
         }
@@ -335,11 +338,11 @@ _fast static void knightMoves(const Board &brd, uint64_t chessMask,
             const int to = __builtin_ctzll(captures);
             const int value = captureValue<status.IsWhite>(brd, to, 1);
             if constexpr (search) {
-                moveHandle<status>(brd,knightCapture<status, capturesOnly>, ml,
-                                   count, from, to, value);
+                moveHandle<status>(brd, knightCapture<status, capturesOnly>, ml,
+                                   count, from, to, value, 1, 0);
             } else {
-                moveHandle<status>(brd,makeKnightCapture<status>, ml, count, from,
-                                   to, value);
+                moveHandle<status>(brd, makeKnightCapture<status>, ml, count,
+                                   from, to, value);
             }
         }
     }
@@ -367,11 +370,11 @@ _fast static void bishopMoves(const Board &brd, uint64_t chessMask,
             Bitloop(attacks) {
                 const int to = __builtin_ctzll(attacks);
                 if constexpr (search) {
-                    moveHandle<status>(brd,bishopMove<status>, ml, count, from, to,
-                                       0);
+                    moveHandle<status>(brd, bishopMove<status>, ml, count, from,
+                                       to, 0, 0, 0);
                 } else {
-                    moveHandle<status>(brd,makeBishopMove<status>, ml, count, from,
-                                       to, 0);
+                    moveHandle<status>(brd, makeBishopMove<status>, ml, count,
+                                       from, to, 0);
                 }
             }
         }
@@ -379,11 +382,11 @@ _fast static void bishopMoves(const Board &brd, uint64_t chessMask,
             const int to = __builtin_ctzll(captures);
             const int value = captureValue<status.IsWhite>(brd, to, 2);
             if constexpr (search) {
-                moveHandle<status>(brd,bishopCapture<status, capturesOnly>, ml,
-                                   count, from, to, value);
+                moveHandle<status>(brd, bishopCapture<status, capturesOnly>, ml,
+                                   count, from, to, value, 1, 0);
             } else {
-                moveHandle<status>(brd,makeBishopCapture<status>, ml, count, from,
-                                   to, value);
+                moveHandle<status>(brd, makeBishopCapture<status>, ml, count,
+                                   from, to, value);
             }
         }
     }
@@ -398,11 +401,11 @@ _fast static void bishopMoves(const Board &brd, uint64_t chessMask,
             Bitloop(attacks) {
                 const int to = __builtin_ctzll(attacks);
                 if constexpr (search) {
-                    moveHandle<status>(brd,bishopMove<status>, ml, count, from, to,
-                                       0);
+                    moveHandle<status>(brd, bishopMove<status>, ml, count, from,
+                                       to, 0, 0, 0);
                 } else {
-                    moveHandle<status>(brd,makeBishopMove<status>, ml, count, from,
-                                       to, 0);
+                    moveHandle<status>(brd, makeBishopMove<status>, ml, count,
+                                       from, to, 0);
                 }
             }
         }
@@ -410,11 +413,11 @@ _fast static void bishopMoves(const Board &brd, uint64_t chessMask,
             const int to = __builtin_ctzll(captures);
             const int value = captureValue<status.IsWhite>(brd, to, 2);
             if constexpr (search) {
-                moveHandle<status>(brd,bishopCapture<status, capturesOnly>, ml,
-                                   count, from, to, value);
+                moveHandle<status>(brd, bishopCapture<status, capturesOnly>, ml,
+                                   count, from, to, value, 1, 0);
             } else {
-                moveHandle<status>(brd,makeBishopCapture<status>, ml, count, from,
-                                   to, value);
+                moveHandle<status>(brd, makeBishopCapture<status>, ml, count,
+                                   from, to, value);
             }
         }
     }
@@ -444,11 +447,11 @@ _fast static void queenMoves(const Board &brd, uint64_t chessMask,
             Bitloop(attacks) {
                 const int to = __builtin_ctzll(attacks);
                 if constexpr (search) {
-                    moveHandle<status>(brd,queenMove<status>, ml, count, from, to,
-                                       0);
+                    moveHandle<status>(brd, queenMove<status>, ml, count, from,
+                                       to, 0, 0, 0);
                 } else {
-                    moveHandle<status>(brd,makeQueenMove<status>, ml, count, from,
-                                       to, 0);
+                    moveHandle<status>(brd, makeQueenMove<status>, ml, count,
+                                       from, to, 0);
                 }
             }
         }
@@ -456,11 +459,11 @@ _fast static void queenMoves(const Board &brd, uint64_t chessMask,
             const int to = __builtin_ctzll(captures);
             const int value = captureValue<status.IsWhite>(brd, to, 4);
             if constexpr (search) {
-                moveHandle<status>(brd,queenCapture<status, capturesOnly>, ml,
-                                   count, from, to, value);
+                moveHandle<status>(brd, queenCapture<status, capturesOnly>, ml,
+                                   count, from, to, value, 1, 0);
             } else {
-                moveHandle<status>(brd,makeQueenCapture<status>, ml, count, from,
-                                   to, value);
+                moveHandle<status>(brd, makeQueenCapture<status>, ml, count,
+                                   from, to, value);
             }
         }
     }
@@ -475,11 +478,11 @@ _fast static void queenMoves(const Board &brd, uint64_t chessMask,
             Bitloop(attacks) {
                 const int to = __builtin_ctzll(attacks);
                 if constexpr (search) {
-                    moveHandle<status>(brd,queenMove<status>, ml, count, from, to,
-                                       0);
+                    moveHandle<status>(brd, queenMove<status>, ml, count, from,
+                                       to, 0, 0, 0);
                 } else {
-                    moveHandle<status>(brd,makeQueenMove<status>, ml, count, from,
-                                       to, 0);
+                    moveHandle<status>(brd, makeQueenMove<status>, ml, count,
+                                       from, to, 0);
                 }
             }
         }
@@ -487,11 +490,11 @@ _fast static void queenMoves(const Board &brd, uint64_t chessMask,
             const int to = __builtin_ctzll(captures);
             const int value = captureValue<status.IsWhite>(brd, to, 4);
             if constexpr (search) {
-                moveHandle<status>(brd,queenCapture<status, capturesOnly>, ml,
-                                   count, from, to, value);
+                moveHandle<status>(brd, queenCapture<status, capturesOnly>, ml,
+                                   count, from, to, value, 1, 0);
             } else {
-                moveHandle<status>(brd,makeQueenCapture<status>, ml, count, from,
-                                   to, value);
+                moveHandle<status>(brd, makeQueenCapture<status>, ml, count,
+                                   from, to, value);
             }
         }
     }
@@ -506,11 +509,11 @@ _fast static void queenMoves(const Board &brd, uint64_t chessMask,
             Bitloop(attacks) {
                 const int to = __builtin_ctzll(attacks);
                 if constexpr (search) {
-                    moveHandle<status>(brd,queenMove<status>, ml, count, from, to,
-                                       0);
+                    moveHandle<status>(brd, queenMove<status>, ml, count, from,
+                                       to, 0, 0, 0);
                 } else {
-                    moveHandle<status>(brd,makeQueenMove<status>, ml, count, from,
-                                       to, 0);
+                    moveHandle<status>(brd, makeQueenMove<status>, ml, count,
+                                       from, to, 0);
                 }
             }
         }
@@ -518,11 +521,11 @@ _fast static void queenMoves(const Board &brd, uint64_t chessMask,
             const int to = __builtin_ctzll(captures);
             const int value = captureValue<status.IsWhite>(brd, to, 4);
             if constexpr (search) {
-                moveHandle<status>(brd,queenCapture<status, capturesOnly>, ml,
-                                   count, from, to, value);
+                moveHandle<status>(brd, queenCapture<status, capturesOnly>, ml,
+                                   count, from, to, value, 1, 0);
             } else {
-                moveHandle<status>(brd,makeQueenCapture<status>, ml, count, from,
-                                   to, value);
+                moveHandle<status>(brd, makeQueenCapture<status>, ml, count,
+                                   from, to, value);
             }
         }
     }
@@ -550,11 +553,11 @@ _fast static void rookMoves(const Board &brd, uint64_t chessMask,
             Bitloop(attacks) {
                 const int to = __builtin_ctzll(attacks);
                 if constexpr (search) {
-                    moveHandle<status>(brd,rookMove<status>, ml, count, from, to,
-                                       0);
+                    moveHandle<status>(brd, rookMove<status>, ml, count, from,
+                                       to, 0, 0, 0);
                 } else {
-                    moveHandle<status>(brd,makeRookMove<status>, ml, count, from,
-                                       to, 0);
+                    moveHandle<status>(brd, makeRookMove<status>, ml, count,
+                                       from, to, 0);
                 }
             }
         }
@@ -562,11 +565,11 @@ _fast static void rookMoves(const Board &brd, uint64_t chessMask,
             const int to = __builtin_ctzll(captures);
             const int value = captureValue<status.IsWhite>(brd, to, 3);
             if constexpr (search) {
-                moveHandle<status>(brd,rookCapture<status, capturesOnly>, ml, count,
-                                   from, to, value);
+                moveHandle<status>(brd, rookCapture<status, capturesOnly>, ml,
+                                   count, from, to, value, 1, 0);
             } else {
-                moveHandle<status>(brd,makeRookCapture<status>, ml, count, from, to,
-                                   value);
+                moveHandle<status>(brd, makeRookCapture<status>, ml, count,
+                                   from, to, value);
             }
         }
     }
@@ -581,11 +584,11 @@ _fast static void rookMoves(const Board &brd, uint64_t chessMask,
             Bitloop(attacks) {
                 const int to = __builtin_ctzll(attacks);
                 if constexpr (search) {
-                    moveHandle<status>(brd,rookMove<status>, ml, count, from, to,
-                                       0);
+                    moveHandle<status>(brd, rookMove<status>, ml, count, from,
+                                       to, 0, 0, 0);
                 } else {
-                    moveHandle<status>(brd,makeRookMove<status>, ml, count, from,
-                                       to, 0);
+                    moveHandle<status>(brd, makeRookMove<status>, ml, count,
+                                       from, to, 0);
                 }
             }
         }
@@ -593,11 +596,11 @@ _fast static void rookMoves(const Board &brd, uint64_t chessMask,
             const int to = __builtin_ctzll(captures);
             const int value = captureValue<status.IsWhite>(brd, to, 3);
             if constexpr (search) {
-                moveHandle<status>(brd,rookCapture<status, capturesOnly>, ml, count,
-                                   from, to, value);
+                moveHandle<status>(brd, rookCapture<status, capturesOnly>, ml,
+                                   count, from, to, value, 1, 0);
             } else {
-                moveHandle<status>(brd,makeRookCapture<status>, ml, count, from, to,
-                                   value);
+                moveHandle<status>(brd, makeRookCapture<status>, ml, count,
+                                   from, to, value);
             }
         }
     }
@@ -615,10 +618,11 @@ _fast static void kingMoves(const Board &brd, uint64_t chessMask,
         Bitloop(moves) {
             const int to = __builtin_ctzll(moves);
             if constexpr (search) {
-                moveHandle<status>(brd,kingMove<status>, ml, count, kingPos, to, 0);
+                moveHandle<status>(brd, kingMove<status>, ml, count, kingPos,
+                                   to, 0, 0, 0);
             } else {
-                moveHandle<status>(brd,makeKingMove<status>, ml, count, kingPos, to,
-                                   0);
+                moveHandle<status>(brd, makeKingMove<status>, ml, count,
+                                   kingPos, to, 0);
             }
         }
     }
@@ -626,11 +630,11 @@ _fast static void kingMoves(const Board &brd, uint64_t chessMask,
         const int to = __builtin_ctzll(captures);
         const int value = captureValue<status.IsWhite>(brd, to, 5);
         if constexpr (search) {
-            moveHandle<status>(brd,kingCapture<status, capturesOnly>, ml, count,
-                               kingPos, to, value);
+            moveHandle<status>(brd, kingCapture<status, capturesOnly>, ml,
+                               count, kingPos, to, value, 1, 0);
         } else {
-            moveHandle<status>(brd,makeKingCapture<status>, ml, count, kingPos, to,
-                               value);
+            moveHandle<status>(brd, makeKingCapture<status>, ml, count, kingPos,
+                               to, value);
         }
     }
 }
@@ -643,11 +647,11 @@ _fast void castels(const Board &brd, uint64_t kingBan, Callback *ml,
             if ((!(WNotOccupiedL & brd.Occ)) && (!(WNotAttackedL & kingBan)) &&
                 (brd.WRook & WRookL)) {
                 if constexpr (search) {
-                    moveHandle<status>(brd,leftCastel<status>, ml, count, 4, 2,
-                                       CASTLE);
+                    moveHandle<status>(brd, leftCastel<status>, ml, count, 4, 2,
+                                       CASTLE, 0, 0);
                 } else {
-                    moveHandle<status>(brd,makeLeftCastel<status>, ml, count, 4, 2,
-                                       CASTLE);
+                    moveHandle<status>(brd, makeLeftCastel<status>, ml, count,
+                                       4, 2, CASTLE);
                 }
             }
         }
@@ -655,11 +659,11 @@ _fast void castels(const Board &brd, uint64_t kingBan, Callback *ml,
             if ((!(WNotOccupiedR & brd.Occ)) && (!(WNotAttackedR & kingBan)) &&
                 (brd.WRook & WRookR)) {
                 if constexpr (search) {
-                    moveHandle<status>(brd,rightCastel<status>, ml, count, 4, 6,
-                                       CASTLE);
+                    moveHandle<status>(brd, rightCastel<status>, ml, count, 4,
+                                       6, CASTLE, 0, 0);
                 } else {
-                    moveHandle<status>(brd,makeRightCastel<status>, ml, count, 4, 6,
-                                       CASTLE);
+                    moveHandle<status>(brd, makeRightCastel<status>, ml, count,
+                                       4, 6, CASTLE);
                 }
             }
         }
@@ -668,11 +672,11 @@ _fast void castels(const Board &brd, uint64_t kingBan, Callback *ml,
             if ((!(BNotOccupiedL & brd.Occ)) && (!(BNotAttackedL & kingBan)) &&
                 (brd.BRook & BRookL)) {
                 if constexpr (search) {
-                    moveHandle<status>(brd,leftCastel<status>, ml, count, 60, 58,
-                                       CASTLE);
+                    moveHandle<status>(brd, leftCastel<status>, ml, count, 60,
+                                       58, CASTLE, 0, 0);
                 } else {
-                    moveHandle<status>(brd,makeLeftCastel<status>, ml, count, 60,
-                                       58, CASTLE);
+                    moveHandle<status>(brd, makeLeftCastel<status>, ml, count,
+                                       60, 58, CASTLE);
                 }
             }
         }
@@ -680,46 +684,48 @@ _fast void castels(const Board &brd, uint64_t kingBan, Callback *ml,
             if ((!(BNotOccupiedR & brd.Occ)) && (!(BNotAttackedR & kingBan)) &&
                 (brd.BRook & BRookR)) {
                 if constexpr (search) {
-                    moveHandle<status>(brd,rightCastel<status>, ml, count, 60, 62,
-                                       CASTLE);
+                    moveHandle<status>(brd, rightCastel<status>, ml, count, 60,
+                                       62, CASTLE, 0, 0);
                 } else {
-                    moveHandle<status>(brd,makeRightCastel<status>, ml, count, 60,
-                                       62, CASTLE);
+                    moveHandle<status>(brd, makeRightCastel<status>, ml, count,
+                                       60, 62, CASTLE);
                 }
             }
         }
     }
 }
 
-
 template <class BoardState status>
-_fast bool isEPPinned(const Board &brd, uint64_t kingPos, uint64_t movedPieces) noexcept {
+_fast bool isEPPinned(const Board &brd, uint64_t kingPos,
+                      uint64_t movedPieces) noexcept {
     int kingIndex = __builtin_ctzll(kingPos);
-    uint64_t enemies = status.IsWhite ? (brd.BRook | brd.BQueen) : (brd.WRook | brd.WQueen);
-    
-    uint64_t rankMask = 0xFFULL << (kingIndex & 56);  
+    uint64_t enemies =
+        status.IsWhite ? (brd.BRook | brd.BQueen) : (brd.WRook | brd.WQueen);
+
+    uint64_t rankMask = 0xFFULL << (kingIndex & 56);
     uint64_t potentialPinners = enemies & rankMask;
-    
+
     if (potentialPinners) {
         uint64_t occupancy = brd.Occ & ~movedPieces;
-        
-        uint64_t attacks =getRmagic(kingIndex, occupancy);
+
+        uint64_t attacks = getRmagic(kingIndex, occupancy);
         if (attacks & potentialPinners) {
-            return true;  
+            return true;
         }
     }
-    
-    return false;  // No pin issue
+
+    return false; // No pin issue
 }
 
 template <class BoardState status, bool search>
 _fast void EPMoves(const Board &brd, int ep, Callback *ml, int &count,
                    uint64_t pinD, uint64_t pinHV, uint64_t checkmask) noexcept {
-    if ((checkmask != ~0ULL) && !(checkmask & (1ULL << (ep + (status.IsWhite ? -8 : 8))))) {
+    if ((checkmask != ~0ULL) &&
+        !(checkmask & (1ULL << (ep + (status.IsWhite ? -8 : 8))))) {
         return;
     }
 
-    if(ep==-1){
+    if (ep == -1) {
         return;
     }
     uint64_t EPRight, EPLeft, EPLeftPinned, EPRightPinned;
@@ -730,44 +736,52 @@ _fast void EPMoves(const Board &brd, int ep, Callback *ml, int &count,
     if constexpr (status.IsWhite) {
         EPLeft = (((brd.WPawn & ~(pinHV | pinD)) & ~File1) << 9ULL) & EPSquare;
         EPRight = (((brd.WPawn & ~(pinHV | pinD)) & ~File8) << 7ULL) & EPSquare;
-        EPLeftPinned = (((brd.WPawn & pinD) & ~File1) << 9ULL) & EPSquare & pinD;
-        EPRightPinned = (((brd.WPawn & pinD) & ~File8) << 7ULL) & EPSquare & pinD;
+        EPLeftPinned =
+            (((brd.WPawn & pinD) & ~File1) << 9ULL) & EPSquare & pinD;
+        EPRightPinned =
+            (((brd.WPawn & pinD) & ~File8) << 7ULL) & EPSquare & pinD;
     } else {
         EPLeft = (((brd.BPawn & ~(pinHV | pinD)) & ~File1) >> 7ULL) & EPSquare;
         EPRight = (((brd.BPawn & ~(pinHV | pinD)) & ~File8) >> 9ULL) & EPSquare;
-        EPLeftPinned = (((brd.BPawn & pinD) & ~File1) >> 7ULL) & EPSquare & pinD;
-        EPRightPinned = (((brd.BPawn & pinD) & ~File8) >> 9ULL) & EPSquare & pinD;
+        EPLeftPinned =
+            (((brd.BPawn & pinD) & ~File1) >> 7ULL) & EPSquare & pinD;
+        EPRightPinned =
+            (((brd.BPawn & pinD) & ~File8) >> 9ULL) & EPSquare & pinD;
     }
     if (EPRight || EPRightPinned) {
         const int to = __builtin_ctzll(EPRight | EPRightPinned);
         const int from = to + (status.IsWhite ? -7 : 9);
-        
+
         uint64_t fromBB = 1ull << from;
         uint64_t kingPos = status.IsWhite ? brd.WKing : brd.BKing;
         uint64_t movedPiecesRay = fromBB | EPSquare | capturedPawnBB;
-        
+
         if (!isEPPinned<status>(brd, kingPos, movedPiecesRay)) {
             if constexpr (search) {
-                moveHandle<status>(brd, EP<status>, ml, count, from, to, EP_VAL);
+                moveHandle<status>(brd, EP<status>, ml, count, from, to, EP_VAL,
+                                   1, 0);
             } else {
-                moveHandle<status>(brd, makeEP<status>, ml, count, from, to, EP_VAL);
+                moveHandle<status>(brd, makeEP<status>, ml, count, from, to,
+                                   EP_VAL);
             }
         }
     }
-    
+
     if (EPLeft || EPLeftPinned) {
         const int to = __builtin_ctzll(EPLeft | EPLeftPinned);
         const int from = to + (status.IsWhite ? -9 : 7);
-        
+
         uint64_t fromBB = 1ull << from;
         uint64_t kingPos = status.IsWhite ? brd.WKing : brd.BKing;
         uint64_t movedPiecesRay = fromBB | EPSquare | capturedPawnBB;
-        
+
         if (!isEPPinned<status>(brd, kingPos, movedPiecesRay)) {
             if constexpr (search) {
-                moveHandle<status>(brd, EP<status>, ml, count, from, to, EP_VAL);
+                moveHandle<status>(brd, EP<status>, ml, count, from, to, EP_VAL,
+                                   1, 0);
             } else {
-                moveHandle<status>(brd, makeEP<status>, ml, count, from, to, EP_VAL);
+                moveHandle<status>(brd, makeEP<status>, ml, count, from, to,
+                                   EP_VAL);
             }
         }
     }
@@ -807,7 +821,7 @@ _fast uint64_t genMoves(const Board &brd, int ep, Callback *ml,
         castels<status, search>(brd, kingBan, ml, count);
     }
     if constexpr ((status.EP) && (!capturesOnly)) {
-        EPMoves<status, search>(brd, ep, ml, count, pinD, pinHV,checkmask);
+        EPMoves<status, search>(brd, ep, ml, count, pinD, pinHV, checkmask);
     }
     return kingBan;
 }

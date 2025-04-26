@@ -66,7 +66,7 @@ void clearHistoryTable() {
         }
     }
 }
-#define MAX_HISTORY 100
+#define MAX_HISTORY 10000
 template <bool IsWhite>
 inline void update_history(int from, int to, int depth) {
     int clampedBonus = clamp(depth, -MAX_HISTORY, MAX_HISTORY);
@@ -126,6 +126,23 @@ inline int quiescence(const Board &brd, int ep, int alpha, int beta, int score,
 
     return alpha;
 }
+
+int calculateExtension(bool isCapture,bool isCheck,bool isPVNode,bool isOneReplay){
+    if(isPVNode){
+    	return 0;
+    }
+    if(isCapture){
+    	return 0;
+    }
+    if(isCheck){
+	return 1;
+    }
+    if(isOneReplay){
+        return 1;
+    }
+    return 0;
+}
+
 
 template <class BoardState status>
 inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
@@ -235,11 +252,11 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
         if ((fromHash != 255) || (expectedPvMove.from != 255)) {
             for (int i = 0; i < count; i++) {
                 if (ml[i].from == fromHash && ml[i].to == toHash) {
-                    ml[i].value += 10000;
+                    ml[i].value += 1000000;
                 }
                 if (ml[i].from == expectedPvMove.from &&
                     ml[i].to == expectedPvMove.to) {
-                    ml[i].value += 20000;
+                    ml[i].value += 2000000;
                 }
             }
         }
@@ -259,32 +276,17 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
         int maxIndex = -1;
         bool firstMove = true;
 
+	int extension = calculateExtension(isCapture,inCheck,isPVNode,count==1);
+
         for (int i = 0; i < count; i++) {
-
-            bool capture = false;
-            bool promotion = false;
-
-            if constexpr (status.IsWhite) {
-                if ((brd.WPawn & (1ULL << ml[i].from)) && (ml[i].to / 8 == 7)) {
-                    promotion = true;
-                }
-            } else {
-                if ((brd.BPawn & (1ULL << ml[i].from)) && (ml[i].to / 8 == 0)) {
-                    promotion = true;
-                }
-            }
-
-            if ((brd.Occ & (1ULL << ml[i].to))) {
-                capture = true;
-            }
 
             int eval;
 
             bool doFullSearch = true;
             int reduction = 0;
 
-            if (!isPVNode && !capture && !inCheck && !promotion && depth >= 3 &&
-                i > 1) {
+            if (!isPVNode && !ml[i].capture && !inCheck && !ml[i].promotion &&
+                depth >= 3 && i > 1) {
                 int baseRed = 1.35 + int(std::log(depth) * std::log(i) / 2.75);
                 reduction = std::clamp(baseRed, 1, depth - 1);
             } else if (!isPVNode && !inCheck && depth >= 3 && i > 1) {
@@ -305,17 +307,17 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
             if (doFullSearch) {
                 if (firstMove) {
                     eval = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha,
-                                       -score, key, depth - 1,
+                                       -score, key, depth - 1 + extension,
                                        irreversibleCount, ply + 1, isPVNode);
                 } else {
                     eval = -ml[i].move(brd, ml[i].from, ml[i].to, -alpha - 1,
-                                       -alpha, -score, key, depth - 1,
+                                       -alpha, -score, key, depth - 1 + extension,
                                        irreversibleCount, ply + 1, false);
 
                     if (eval > alpha && eval < beta) {
                         eval =
                             -ml[i].move(brd, ml[i].from, ml[i].to, -beta,
-                                        -alpha, -score, key, depth - 1,
+                                        -alpha, -score, key, depth - 1+ extension,
                                         irreversibleCount, ply + 1, isPVNode);
                     }
                 }
@@ -325,8 +327,14 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
 
             // move is to good
             if (eval >= beta) {
-                if (!capture) {
-                    update_history<status.IsWhite>(ml[i].from, ml[i].to, depth);
+                if (!ml[i].capture && !ml[i].promotion) {
+                    update_history<status.IsWhite>(ml[i].from, ml[i].to, depth*depth);
+                }
+                for (int j = 0; j < i; j++) {
+                    if (!ml[j].capture && !ml[j].promotion) {
+                        update_history<status.IsWhite>(ml[j].from, ml[j].to,
+                                                       -depth);
+                    }
                 }
                 if (depth > 1) {
                     if (shouldStop.load()) {
@@ -413,10 +421,10 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
     for (int i = 0; i < count; i++) {
         if (ml[i].from == expectedRootPvMove.from &&
             ml[i].to == expectedRootPvMove.to) {
-            ml[i].value += 20000;
+            ml[i].value += 2000000;
         }
         if (ml[i].from == fromHash && ml[i].to == toHash) {
-            ml[i].value += 10000;
+            ml[i].value += 1000000;
         }
     }
 
