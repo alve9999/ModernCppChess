@@ -17,9 +17,15 @@ std::vector<uint64_t> prevHash = {};
 int mg_phase = 0;
 int eg_phase = 0;
 
+void printVector(const std::vector<uint64_t>& vec, const std::string& delimiter = " ") {
+    for (const auto& elem : vec) {
+        std::cout << elem << delimiter;
+    }
+    std::cout << '\n';
+}
 
 void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
-                     std::unique_ptr<BoardState> &state,int &irreversibleCount) {
+                     std::unique_ptr<BoardState> &state,int &irreversibleCount, int &ep) {
     std::vector<std::string> tokens;
     std::stringstream ss(str);
     std::string token;
@@ -29,6 +35,7 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
     if (tokens[0] == "quit") {
         exit(0);
     } else if (tokens[0] == "position") {
+        prevHash.clear();
         if (tokens[1] == "startpos") {
             brd.reset(new Board(loadFenBoard(
                 "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")));
@@ -45,25 +52,26 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
 
             if (moveIndex < tokens.size()) {
                 int ep = 0;
-
-                MoveCallbacks move;
                 for (size_t i = moveIndex; i < tokens.size(); i++) {
+                    MoveCallbacks move;
                     if (white) {
                         move =
-                            algebraicToMove<true>(tokens[i], *brd, *state, ep);
+                            algebraicToMove<true>(tokens[i], *brd, *state);
                     } else {
                         move =
-                            algebraicToMove<false>(tokens[i], *brd, *state, ep);
+                            algebraicToMove<false>(tokens[i], *brd, *state);
                     }
                     brd.reset(new Board(move.boardCallback()));
                     state.reset(new BoardState(move.stateCallback()));
                     white = !white;
-                }
-                if(move.irreversible) {
-                    irreversibleCount=0;
-                }
-                else {
-                    irreversibleCount++;
+                    if(move.irreversible) {
+                        irreversibleCount=0;
+                    }
+                    else {
+                        irreversibleCount++;
+                    }
+                    ep = move.ep;
+                    prevHash.push_back(create_hash(*brd, state->IsWhite));
                 }
             }
         } else if (tokens[1] == "fen") {
@@ -86,32 +94,32 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
             white = state->IsWhite;
 
             if (fenEnd < tokens.size()) {
-                int ep = 0;
 
                 MoveCallbacks move;
                 for (size_t i = fenEnd + 1; i < tokens.size(); i++) {
                     if (white) {
                         move =
-                            algebraicToMove<true>(tokens[i], *brd, *state, ep);
+                            algebraicToMove<true>(tokens[i], *brd, *state);
                     } else {
                         move =
-                            algebraicToMove<false>(tokens[i], *brd, *state, ep);
+                            algebraicToMove<false>(tokens[i], *brd, *state);
                     }
                     brd.reset(new Board(move.boardCallback()));
                     state.reset(new BoardState(move.stateCallback()));
                     white = !white;
-                }
-                if(move.irreversible) {
-                    irreversibleCount=0;
-                }
-                else {
-                    irreversibleCount++;
+                    if(move.irreversible) {
+                        irreversibleCount=0;
+                    }
+                    else {
+                        irreversibleCount++;
+                    }
+                    ep = move.ep;
+                    prevHash.push_back(create_hash(*brd, state->IsWhite));
                 }
             }
             // printBoard(*brd);
             // printBitboard((*brd).Occ);
         }
-        prevHash.push_back(create_hash(*brd, state->IsWhite));
     } else if (tokens[0] == "isready") {
         std::cout << "readyok" << std::endl;
     } else if (tokens[0] == "uci") {
@@ -153,26 +161,16 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
         bool blackRight = state->BRC;
 
         Callback ml =
-            iterative_deepening(*brd, -1, whiteTurn, enPassant, whiteLeft,
+            iterative_deepening(*brd, ep, whiteTurn, enPassant, whiteLeft,
                                 whiteRight, blackLeft, blackRight, think,irreversibleCount);
 
         std::cout << "bestmove " << convertMoveToUCI(*brd, ml.from, ml.to)
                   << std::endl;
 
-        if ((brd->Occ & (1 << ml.to)) || ((brd->BPawn|brd->WPawn) & (1 << ml.from))) {
-            irreversibleCount=0;
-        }
-        else {
-            irreversibleCount++;
-        }
-
         MoveResult moveRes = ml.makeMove(*brd, ml.from, ml.to);
         brd.reset(new Board(moveRes.board));
         state.reset(new BoardState(moveRes.state));
-
-
-        prevHash.push_back(create_hash(*brd, state->IsWhite));
-        //printVector(prevHash);
+        irreversibleCount = 0;
         //std::cout << ttc << " " << ttf << std::endl;
         auto end = std::chrono::high_resolution_clock::now();
         // Calculate duration
@@ -191,11 +189,12 @@ void uciRunGame() {
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 "));
 
     int irreversibleCount = 0;
+    int ep = -1;
     while (1) {
         if (std::cin.peek() != EOF) {
             std::string str;
             std::getline(std::cin, str);
-            proccessCommand(str, brd, state, irreversibleCount);
+            proccessCommand(str, brd, state, irreversibleCount, ep);
         }
     }
 }

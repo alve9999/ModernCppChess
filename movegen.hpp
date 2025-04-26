@@ -715,14 +715,13 @@ _fast bool isEPPinned(const Board &brd, uint64_t kingPos, uint64_t movedPieces) 
 template <class BoardState status, bool search>
 _fast void EPMoves(const Board &brd, int ep, Callback *ml, int &count,
                    uint64_t pinD, uint64_t pinHV, uint64_t checkmask) noexcept {
-
-    if (checkmask != ~0ULL && !(checkmask & (1ULL << (ep + (status.IsWhite ? -8 : 8))))) {
+    if ((checkmask != ~0ULL) && !(checkmask & (1ULL << (ep + (status.IsWhite ? -8 : 8))))) {
         return;
     }
+
     if(ep==-1){
         return;
     }
-    
     uint64_t EPRight, EPLeft, EPLeftPinned, EPRightPinned;
     int capturedPawnPos = ep + (status.IsWhite ? -8 : 8);
     uint64_t capturedPawnBB = 1ull << capturedPawnPos;

@@ -49,11 +49,12 @@ struct MoveCallbacks {
     std::function<Board()> boardCallback;
     std::function<BoardState()> stateCallback;
     bool irreversible;
+    int ep;
 };
 
 template <bool IsWhite>
 MoveCallbacks algebraicToMove(std::string &alg, const Board &brd,
-                              const BoardState state, int ep) {
+                              const BoardState state) {
     uint8_t from = algToCoord(alg.substr(0, 2));
     uint8_t to = algToCoord(alg.substr(2, 4));
     /*std::cout << "icnoming move:" << std::endl;
@@ -63,6 +64,7 @@ MoveCallbacks algebraicToMove(std::string &alg, const Board &brd,
     BoardPiece type = BoardPiece::Pawn;
     bool capture = ISSET(brd.Occ, to);
     int special = 0;
+    int ep = -1;
     bool irreversible = capture;
     if constexpr (IsWhite) {
         if (ISSET(brd.WPawn, from)) {
@@ -72,6 +74,7 @@ MoveCallbacks algebraicToMove(std::string &alg, const Board &brd,
                 special = 3; // en passant
             }
             if (abs(from - to) == 16) {
+                ep = to + (state.IsWhite ? -8 : 8);
                 special = 1; // pawn double move
             }
             if (to / 8 == 7) {
@@ -114,6 +117,7 @@ MoveCallbacks algebraicToMove(std::string &alg, const Board &brd,
                 special = 3; // en passant
             }
             if (abs(from - to) == 16) {
+                ep = to + (state.IsWhite ? -8 : 8);
                 special = 1; // pawn double move
             }
             if (to / 8 == 0) { // promotion (reaching the 1st rank)
@@ -337,8 +341,7 @@ MoveCallbacks algebraicToMove(std::string &alg, const Board &brd,
     } else {
         stateCallback = [state]() { return state.normal(); };
     }
-
-    return MoveCallbacks{boardCallback, stateCallback, irreversible};
+    return MoveCallbacks{boardCallback, stateCallback, irreversible, ep};
 }
 
 static long long c = 0;

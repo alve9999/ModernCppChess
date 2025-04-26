@@ -20,7 +20,7 @@ extern long node_count;
 long node_count = 0;
 std::atomic<bool> shouldStop(false);
 #define STOP -7777
-#define CONTEMPT_FACTOR 0
+#define CONTEMPT_FACTOR 0 
 
 // --- PV Table Definitions ---
 const int MAX_SEARCH_DEPTH = 99;
@@ -131,17 +131,6 @@ inline int quiescence(const Board &brd, int ep, int alpha, int beta, int score,
 template <class BoardState status>
 inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
                    uint64_t key, const int depth,int irreversibleCount,int ply,bool isPVNode,bool isCapture) noexcept {
-    /*if(evaluate<status.IsWhite>(brd) != -score){
-        printf("Error in eval\n");
-        printf("Score: %d\n", score);
-        printf("Eval: %d\n", -evaluate<status.IsWhite>(brd));
-    }
-    if(key!=create_hash(brd, status.IsWhite)){
-        printf("Error in hash\n");
-        printf("Key: %lu\n", key);
-        printf("Hash: %lu\n", create_hash(brd, status.IsWhite));
-    }*/
-
 
     uint64_t kingBan = 0;
     if (depth >= 1) {
@@ -171,12 +160,13 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
 
     if (depth == 0) {
         //return -score;
+        //
         return quiescence<status>(brd, ep, alpha, beta, score, key, 0,
                                   irreversibleCount, ply + 1, isPVNode,0);
     } else {
         prevHash.push_back(key);
-        if(irreversibleCount >= 3){
-            if(std::count(prevHash.rbegin(), prevHash.rbegin()+std::min(static_cast<size_t>(irreversibleCount),prevHash.size()),key) > 1){
+        if(irreversibleCount >= 4){
+            if(std::count(prevHash.end()-std::min<size_t>(irreversibleCount+1,prevHash.size()), prevHash.end(),key) > 2){
                 prevHash.pop_back();
                 return (status.IsWhite==white)?-CONTEMPT_FACTOR:CONTEMPT_FACTOR;
             }
@@ -251,7 +241,7 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
         bool outOfMoves = (count == 0);
         if (outOfMoves && inCheck) {
             prevHash.pop_back();
-            return -99999;
+            return (-99999+ply);
         }
         if (outOfMoves) {
             prevHash.pop_back();
@@ -266,6 +256,17 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
         for (int i = 0; i < count; i++) {
 
             bool capture = false;
+            bool promotion = false;
+
+            if constexpr (status.IsWhite) {
+                if ((brd.WPawn & (1ULL << ml[i].from)) && (ml[i].to / 8 == 7)) {
+                    promotion = true;
+                }
+            } else {
+                if ((brd.BPawn & (1ULL << ml[i].from)) && (ml[i].to / 8 == 0)) {
+                    promotion = true;
+                }
+            }
 
             if ((brd.Occ & (1ULL << ml[i].to))) {
                 capture = true;
@@ -273,28 +274,29 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
 
             int eval;
             
-            /*bool doFullSearch = true;
+            bool doFullSearch = true;
             int reduction = 0;
 
-            if (!isPVNode && depth >= 3 && i >= 3) {
-                if (capture || inCheck) {
-                    reduction = 1; 
-                } else {
-                    reduction = 2;
-                }
+            if (!isPVNode && !capture && !inCheck && !promotion && depth >= 3 && i > 1) {
+                int baseRed = 1.35 + int(std::log(depth) * std::log(i)/2.75);
+                reduction = std::clamp(baseRed, 1, depth - 1);
             }
+            /*else if(!isPVNode && !inCheck && depth >= 3 && i > 1) {
+                int baseRed = 0.2 + int(std::log(depth) * std::log(i)/3.35);
+                reduction = std::clamp(baseRed, 1, depth - 1);
+            }*/
 
 
             if (reduction > 0) {
                 doFullSearch = false;
                 eval = -ml[i].move(brd, ml[i].from, ml[i].to, -alpha - 1, -alpha,
-                                   -score, key, depth - reduction - 1, irreversibleCount,ply+1,false);
-                if (eval >= alpha) {
+                                   -score, key, depth - reduction, irreversibleCount,ply+1,false);
+                if (eval > alpha) {
                     doFullSearch = true;
                 }
             }
 
-            if(doFullSearch){*/
+            if(doFullSearch){
                 if (firstMove) {
                     eval = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha,
                                     -score, key, depth - 1, irreversibleCount,ply+1,isPVNode);
@@ -307,7 +309,7 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
                                         -score, key, depth - 1, irreversibleCount,ply+1,isPVNode);
                     }
                 }
-            //}
+            }
 
 
             firstMove = false;
@@ -373,7 +375,6 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
     if (0 <= MAX_SEARCH_DEPTH) {
       pvLength[0] = 0;
     }
-
 
     int score;
     mg_phase = calculatePhaseInterpolation(brd);
@@ -479,7 +480,7 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
             int eval; 
 
             eval = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha,
-                                   score, key, depth - 1, irreversibleCount,1,firstMove);
+                                   score, key, depth - 1, irreversibleCount,0,firstMove);
             firstMove = false;
         
             if (shouldStop.load()) {
@@ -543,7 +544,6 @@ Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP,
     shouldStop.store(false);
 
     Callback bestMove{};
-    printf("phase %d", calculatePhaseInterpolation(brd));
     int eval = 0;
     std::thread timerThread([&] {
         while (true) {
@@ -558,6 +558,7 @@ Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP,
     });
     int bestFrom = 255;
     int bestTo = 255;
+
     for (int depth = 1; depth <= 99; depth += 1) {
         //clearHistoryTable();
         ageHistoryTable();
