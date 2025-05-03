@@ -825,7 +825,9 @@ inline uint64_t update_hash_en_passant(uint64_t key, int from, int to) {
 }
 
 inline uint64_t toggle_side_to_move(uint64_t key) {
-    return key ^ random_key[768];
+    key ^= random_key[768];
+    __builtin_prefetch(&TT.Table[(key) & (TT.size - 1)], 1, 1);
+    return key;
 }
 
 #include "hash.hpp"

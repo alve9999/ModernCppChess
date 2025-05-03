@@ -12,26 +12,64 @@
 #include <iostream>
 #include <omp.h>
 #include <thread>
+#include "SEE.hpp"
 
 extern std::atomic<bool> shouldStop;
 extern long node_count;
 
-long node_count = 0;
-std::atomic<bool> shouldStop(false);
-#define STOP -7777
+inline long node_count = 0;
+inline std::atomic<bool> shouldStop(false);
 #define CONTEMPT_FACTOR 0
 
 // --- PV Table Definitions ---
-const int MAX_SEARCH_DEPTH = 99;
-int previousPvLineLength = 0;
+inline const int MAX_SEARCH_DEPTH = 99;
+inline int previousPvLineLength = 0;
 struct MovePV {
     uint8_t from = 255;
     uint8_t to = 255;
 };
 
-MovePV pvTable[MAX_SEARCH_DEPTH + 1][MAX_SEARCH_DEPTH + 1];
-int pvLength[MAX_SEARCH_DEPTH + 1];
-MovePV previousPvLine[MAX_SEARCH_DEPTH + 1];
+inline MovePV pvTable[MAX_SEARCH_DEPTH + 1][MAX_SEARCH_DEPTH + 1];
+inline int pvLength[MAX_SEARCH_DEPTH + 1];
+inline MovePV previousPvLine[MAX_SEARCH_DEPTH + 1];
+
+constexpr int MAX_KILLER_MOVES = 2;
+constexpr int MAX_KILLER_PLY = 99; 
+
+static uint16_t killerMoves[MAX_KILLER_PLY][MAX_KILLER_MOVES] = {0};
+
+inline uint16_t packMove(uint8_t from, uint8_t to) {
+    return (static_cast<uint16_t>(from) << 8) | to;
+}
+
+inline void unpackMove(uint16_t packed, uint8_t& from, uint8_t& to) {
+    from = (packed >> 8) & 0xFF;
+    to = packed & 0xFF;
+}
+
+inline void updateKillerMoves(int ply, uint8_t from, uint8_t to) {
+    if (ply >= MAX_KILLER_PLY) return;
+    
+    uint16_t move = packMove(from, to);
+    
+    if (killerMoves[ply][0] == move) return;
+    
+    killerMoves[ply][1] = killerMoves[ply][0];
+    killerMoves[ply][0] = move;
+}
+
+inline int getKillerMoveBonus(uint8_t from, uint8_t to, int ply) {
+    uint16_t move = packMove(from, to);
+    
+    if (move == killerMoves[ply][0]) return 11000;
+    else if (move == killerMoves[ply][1]) return 11000;
+    
+    return 0; 
+}
+
+inline void resetKillerMoves() {
+    memset(killerMoves, 0, sizeof(killerMoves));
+}
 
 inline void sortMoves(Callback *array, int count) {
     std::sort(array, array + count, [](const Callback &a, const Callback &b) {
@@ -48,7 +86,7 @@ inline int clamp(int value, int min, int max) {
     }
     return value;
 }
-void ageHistoryTable() {
+inline void ageHistoryTable() {
     for (int i = 0; i < 2; i++) {
         for (int from = 0; from < 64; from++) {
             for (int to = 0; to < 64; to++) {
@@ -57,7 +95,7 @@ void ageHistoryTable() {
         }
     }
 }
-void clearHistoryTable() {
+inline void clearHistoryTable() {
     for (int i = 0; i < 2; i++) {
         for (int from = 0; from < 64; from++) {
             for (int to = 0; to < 64; to++) {
@@ -75,11 +113,14 @@ inline void update_history(int from, int to, int depth) {
         historyTable[IsWhite][from][to] * abs(clampedBonus) / MAX_HISTORY;
 }
 
+
+
 template <class BoardState status>
 inline int quiescence(const Board &brd, int ep, int alpha, int beta, int score,
                       uint64_t key, int qdepth, int irreversibleCount, int ply,
                       bool isPVNode, bool isCapture) noexcept {
     node_count++;
+
 
     int standPat = -score;
     if (standPat >= beta) {
@@ -89,7 +130,7 @@ inline int quiescence(const Board &brd, int ep, int alpha, int beta, int score,
         alpha = standPat;
     }
 
-    if (qdepth >= 5) {
+    if (qdepth == 0) {
         return standPat;
     }
 
@@ -103,6 +144,7 @@ inline int quiescence(const Board &brd, int ep, int alpha, int beta, int score,
     genMoves<status, 1, 1>(brd, ep, ml, count);
     sortMoves(ml, count);
     for (int i = 0; i < count; i++) {
+
         int delta = 200;
         int attackPiece = getAttackerPiece<!status.IsWhite>(brd, ml[i].from);
         if (attackPiece == 0 && abs(ml[i].from - ml[i].to) == 8) {
@@ -114,8 +156,9 @@ inline int quiescence(const Board &brd, int ep, int alpha, int beta, int score,
         if (standPat + delta < alpha) {
             continue;
         }
+
         int eval = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha, -score,
-                               key, qdepth + 1, irreversibleCount, ply, false);
+                               key, qdepth - 1, irreversibleCount, ply, false);
         if (eval >= beta) {
             return beta;
         }
@@ -127,7 +170,7 @@ inline int quiescence(const Board &brd, int ep, int alpha, int beta, int score,
     return alpha;
 }
 
-int calculateExtension(bool isCapture,bool isCheck,bool isPVNode,bool isOneReplay){
+inline int calculateExtension(bool isCapture,bool isCheck,bool isPVNode,bool isOneReplay){
     if(isPVNode){
     	return 0;
     }
@@ -135,14 +178,13 @@ int calculateExtension(bool isCapture,bool isCheck,bool isPVNode,bool isOneRepla
     	return 0;
     }
     if(isCheck){
-	return 1;
+	    return 1;
     }
     if(isOneReplay){
         return 1;
     }
     return 0;
 }
-
 
 template <class BoardState status>
 inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
@@ -172,14 +214,14 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
     }
 
     if (shouldStop.load()) {
-        return STOP;
+        return beta;
     }
 
     if (depth == 0) {
         // return -score;
         //
-        return quiescence<status>(brd, ep, alpha, beta, score, key, 0,
-                                  irreversibleCount, ply + 1, isPVNode, 0);
+        return quiescence<status>(brd, ep, alpha, beta, score, key, 5,
+                                  irreversibleCount, 0, isPVNode, 0);
     } else {
         prevHash.push_back(key);
         if (irreversibleCount >= 4) {
@@ -190,6 +232,29 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
                 prevHash.pop_back();
                 return (status.IsWhite == white) ? -CONTEMPT_FACTOR
                                                  : CONTEMPT_FACTOR;
+            }
+        }
+
+        int hashf = 1;
+
+        MovePV expectedPvMove;
+        if (isPVNode && ply < previousPvLineLength) {
+            expectedPvMove = previousPvLine[ply];
+        } else {
+            expectedPvMove.from = 255;
+            expectedPvMove.to = 255;
+        }
+
+        uint8_t fromHash = 255;
+        uint8_t toHash = 255;
+        if (depth > 1) {
+            res val = TT.probe_hash(depth, alpha, beta, key);
+            fromHash = val.from;
+            toHash = val.to;
+            if (val.value != UNKNOWN) {
+
+                prevHash.pop_back();
+                return val.value;
             }
         }
 
@@ -221,28 +286,6 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
             }
         }
 
-        int hashf = 1;
-
-        MovePV expectedPvMove;
-        if (isPVNode && ply < previousPvLineLength) {
-            expectedPvMove = previousPvLine[ply];
-        } else {
-            expectedPvMove.from = 255;
-            expectedPvMove.to = 255;
-        }
-
-        uint8_t fromHash = 255;
-        uint8_t toHash = 255;
-        if (depth != 1) {
-            res val = TT.probe_hash(depth, alpha, beta, key);
-            fromHash = val.from;
-            toHash = val.to;
-            if (val.value != UNKNOWN) {
-
-                prevHash.pop_back();
-                return val.value;
-            }
-        }
 
         Callback ml[217];
         int count = 0;
@@ -257,6 +300,9 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
                 if (ml[i].from == expectedPvMove.from &&
                     ml[i].to == expectedPvMove.to) {
                     ml[i].value += 2000000;
+                }
+                if (!ml[i].capture && !ml[i].promotion) {
+                    ml[i].value += getKillerMoveBonus(ml[i].from, ml[i].to, ply);
                 }
             }
         }
@@ -274,11 +320,15 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
         }
 
         int maxIndex = -1;
+        int bestEval = -99999;
         bool firstMove = true;
 
-	int extension = calculateExtension(isCapture,inCheck,isPVNode,count==1);
+	    int extension = calculateExtension(isCapture,inCheck,isPVNode,count==1);
 
         for (int i = 0; i < count; i++) {
+            /*if((depth < 7) && ml[i].capture && (SEE(brd,ml[i].from,ml[i].to)>(-100*depth))){
+                continue;
+            }*/
 
             int eval;
 
@@ -325,10 +375,32 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
 
             firstMove = false;
 
+            if(eval > bestEval){
+                bestEval = eval;
+                maxIndex = i;
+                if (eval > alpha) {
+                    hashf = 0;
+                    alpha = eval;
+
+                    if (ply <= MAX_SEARCH_DEPTH) {
+                        pvTable[ply][0].from = ml[i].from;
+                        pvTable[ply][0].to = ml[i].to;
+                        if (ply + 1 <= MAX_SEARCH_DEPTH) {
+                            memcpy(&pvTable[ply][1], &pvTable[ply + 1][0],
+                                pvLength[ply + 1] * sizeof(MovePV));
+                            pvLength[ply] = pvLength[ply + 1] + 1;
+                        } else {
+                            pvLength[ply] = 1;
+                        }
+                    }
+                }
+            }
+    
             // move is to good
             if (eval >= beta) {
                 if (!ml[i].capture && !ml[i].promotion) {
                     update_history<status.IsWhite>(ml[i].from, ml[i].to, depth*depth);
+                    updateKillerMoves(ply, ml[i].from, ml[i].to);
                 }
                 for (int j = 0; j < i; j++) {
                     if (!ml[j].capture && !ml[j].promotion) {
@@ -337,44 +409,24 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
                     }
                 }
                 if (depth > 1) {
-                    if (shouldStop.load()) {
-                        prevHash.pop_back();
-                        return STOP;
-                    }
                     TT.store(depth, beta, 2, key, ml[i].from, ml[i].to);
                 }
                 prevHash.pop_back();
-                return beta;
+                return bestEval;
             }
+            
 
-            if (eval > alpha) {
-                maxIndex = i;
-                hashf = 0;
-                alpha = eval;
-
-                if (ply <= MAX_SEARCH_DEPTH) {
-                    pvTable[ply][0].from = ml[i].from;
-                    pvTable[ply][0].to = ml[i].to;
-                    if (ply + 1 <= MAX_SEARCH_DEPTH) {
-                        memcpy(&pvTable[ply][1], &pvTable[ply + 1][0],
-                               pvLength[ply + 1] * sizeof(MovePV));
-                        pvLength[ply] = pvLength[ply + 1] + 1;
-                    } else {
-                        pvLength[ply] = 1;
-                    }
-                }
-            }
         }
         if (shouldStop.load()) {
             prevHash.pop_back();
-            return STOP;
+            return beta;
         }
         if (depth > 1) {
             TT.store(depth, alpha, hashf, key, ml[maxIndex].from,
                      ml[maxIndex].to);
         }
         prevHash.pop_back();
-        return alpha;
+        return bestEval;
     }
 }
 
@@ -549,9 +601,11 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
     return ml[0];
 }
 
-Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP,
+inline Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP,
                              bool WL, bool WR, bool BL, bool BR,
                              double timeLimit, int irreversibleCount) {
+    TT.age++;
+    resetKillerMoves();
     using clock = std::chrono::high_resolution_clock;
     auto start = clock::now();
     shouldStop.store(false);
@@ -592,3 +646,4 @@ Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP,
     timerThread.join();
     return bestMove;
 }
+

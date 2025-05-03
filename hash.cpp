@@ -15,13 +15,14 @@ TranspositionTable::TranspositionTable(uint64_t log2_size) {
 void TranspositionTable::store(int depth, int val, int flag, uint64_t key,
                                uint8_t from, uint8_t to) {
     entry *node = &Table[key & (size - 1)];
-    if (node->key != key || depth >= node->depth) {
+    if ((flag==0) || (node->depth < (depth + ((node->key == key) ? 2 : 0))) || (node->age != age) || (node->key == 0)) {
         node->depth = depth;
         node->value = val;
         node->flags = flag;
         node->key = key;
         node->from = from;
         node->to = to;
+        node->age = age;
     }
 }
 

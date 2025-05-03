@@ -21,5 +21,5 @@ rm -rf fastchess_log
 
 # Run the chess engines with the appropriate names
 fastchess -engine cmd="$1" name="$exec1_name" -engine cmd="$2" name="$exec2_name" \
-    -openings file=Pohl.epd format=epd order=random \
-    -each tc=10+0.1 -rounds 1000 -repeat -concurrency $3 -log file=fastchess_log engine=true
+    -openings file=Pohl.epd format=epd order=random -each tc=10+0.1 -sprt elo0=0 elo1=10 alpha=0.10 beta=0.10 model=normalized -rounds 15000 -repeat -recover -concurrency $3 -log file=fastchess_log engine=true
+

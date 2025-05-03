@@ -28,10 +28,9 @@ struct entry {
     int8_t flags;
     uint8_t to;
     uint8_t from;
-
+    int age;
 };
 
-static_assert(sizeof(entry) == 16, "entry must be 16 bytes");
 
 /*
 struct bucket {
@@ -47,6 +46,7 @@ struct res {
 };
 class TranspositionTable {
 public:
+    int age = 0;
     uint64_t size;
     //bucket* Table;
     entry* Table;
