@@ -87,7 +87,7 @@ inline void updateAttackers(uint64_t& attackers,const Board& brd, uint64_t& occ,
     attackers &= ~(1ULL << fromSquare);
     occ &= ~(1ULL << fromSquare);
     
-    if (piece == 3 || piece == 4 || piece == 5) {
+    if (piece == 3 || piece == 4 || piece == 5 || piece == 0) {
         uint64_t rookAttacks = getRmagic(toSquare, occ);
         attackers |= rookAttacks & (brd.WRook | brd.BRook | 
                                    brd.WQueen | brd.BQueen) & occ;
@@ -142,9 +142,12 @@ int SEE(const Board& brd, int from, int to) noexcept {
     
     int seeValues[32];
     int depth = 0;
-    if (capturedPieceType == -1) {
+    if (movingPieceType == 0 && (to<=7 || to>=56)) {
         seeValues[0] = seePieceValues[4] - seePieceValues[0];
         movingPieceType = 4;
+    }
+    else if(capturedPieceType==-1){
+        seeValues[0] = 0;
     }
     else{
         seeValues[0] = seePieceValues[capturedPieceType];
@@ -157,17 +160,23 @@ int SEE(const Board& brd, int from, int to) noexcept {
     int lastPieceType = movingPieceType;
     bool side = !isWhiteMoving;
     while (attackers) {
-        depth++;
-        
-        seeValues[depth] = seePieceValues[lastPieceType] - seeValues[depth-1];
-        
         int nextPieceType = -1;
         int nextAttackerSquare = getLeastValuableAttacker(brd, to, side, attackers, nextPieceType);
-        
         if (nextAttackerSquare == -1) {
             break;
         }
         
+        depth++;
+
+        int gain = 0;
+        if (depth == 1 && capturedPieceType == -1) {
+            gain = seePieceValues[lastPieceType];
+        }
+        else {
+            gain = seePieceValues[lastPieceType] - seeValues[depth - 1];
+        }
+
+        seeValues[depth] = gain;
         lastPieceType = nextPieceType;
         
         occ &= ~(1ULL << nextAttackerSquare);
@@ -177,9 +186,9 @@ int SEE(const Board& brd, int from, int to) noexcept {
         
         side = !side;
     }
-    
     for (int i = depth; i > 0; i--) {
         seeValues[i-1] = -std::max(-seeValues[i-1], seeValues[i]);
     }
+
     return seeValues[0];
 }

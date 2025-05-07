@@ -144,7 +144,6 @@ inline int quiescence(const Board &brd, int ep, int alpha, int beta, int score,
     genMoves<status, 1, 1>(brd, ep, ml, count);
     sortMoves(ml, count);
     for (int i = 0; i < count; i++) {
-
         int delta = 200;
         int attackPiece = getAttackerPiece<!status.IsWhite>(brd, ml[i].from);
         if (attackPiece == 0 && abs(ml[i].from - ml[i].to) == 8) {
@@ -319,6 +318,16 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
             return 0;
         }
 
+        bool futilityPruning = false;
+        int futilityMargin = 0;
+        
+        if (depth <= 2 && !isPVNode && !inCheck && alpha > -90000 && alpha < 90000) {
+            futilityMargin = depth == 1 ? 200 : 300;
+            
+            if (-score + futilityMargin <= alpha) {
+                futilityPruning = true;
+            }
+        }
         int maxIndex = -1;
         int bestEval = -99999;
         bool firstMove = true;
@@ -330,6 +339,9 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
                 continue;
             }*/
 
+            if (futilityPruning && i > 0 && !ml[i].capture && !ml[i].promotion && !inCheck) {
+                continue;
+            }
             int eval;
 
             bool doFullSearch = true;
