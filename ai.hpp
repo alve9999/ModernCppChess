@@ -13,6 +13,7 @@
 #include <omp.h>
 #include <thread>
 #include "SEE.hpp"
+#include "minimax_info.hpp"
 
 extern std::atomic<bool> shouldStop;
 extern long node_count;
@@ -116,9 +117,18 @@ inline void update_history(int from, int to, int depth) {
 
 
 template <class BoardState status>
-inline int quiescence(const Board &brd, int ep, int alpha, int beta, int score,
-                      uint64_t key, int qdepth, int irreversibleCount, int ply,
-                      bool isPVNode, bool isCapture) noexcept {
+inline int quiescence(const Board &brd, minimax_info_t &info) noexcept {
+    int ep = info.ep;
+    int alpha = info.alpha;
+    int beta = info.beta;
+    int score = info.score;
+    uint64_t key = info.key;
+    int qdepth = info.depth;
+    int irreversibleCount = info.irreversibleCount;
+    int ply = info.ply;
+    bool isPVNode = info.isPVNode;
+    bool isCapture = info.isCapture;
+
     node_count++;
 
 
@@ -155,9 +165,18 @@ inline int quiescence(const Board &brd, int ep, int alpha, int beta, int score,
         if (standPat + delta < alpha) {
             continue;
         }
-
-        int eval = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha, -score,
-                               key, qdepth - 1, irreversibleCount, ply, false);
+        move_info_t moveInfo;
+        moveInfo.from = ml[i].from;
+        moveInfo.to = ml[i].to;
+        moveInfo.alpha = -beta;
+        moveInfo.beta = -alpha;
+        moveInfo.score = -score;
+        moveInfo.key = key;
+        moveInfo.depth = qdepth - 1;
+        moveInfo.irreversibleCount = irreversibleCount;
+        moveInfo.ply = ply;
+        moveInfo.isPVNode = false;
+        int eval = -ml[i].move(brd, moveInfo);
         if (eval >= beta) {
             return beta;
         }
@@ -169,7 +188,7 @@ inline int quiescence(const Board &brd, int ep, int alpha, int beta, int score,
     return alpha;
 }
 
-inline int calculateExtension(bool isCapture,bool isCheck,bool isPVNode,bool isOneReplay){
+inline int calculateExtension(bool isCapture,bool isCheck, bool isPVNode,bool isOneReplay){
     if(isPVNode){
     	return 0;
     }
@@ -186,10 +205,27 @@ inline int calculateExtension(bool isCapture,bool isCheck,bool isPVNode,bool isO
 }
 
 template <class BoardState status>
-inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
-                   uint64_t key, const int depth, int irreversibleCount,
-                   int ply, bool isPVNode, bool isCapture) noexcept {
+inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
+    int ep = info.ep;
+    int alpha = info.alpha;
+    int beta = info.beta;
+    int score = info.score;
+    uint64_t key = info.key;
+    int depth = info.depth;
+    int irreversibleCount = info.irreversibleCount;
+    int ply = info.ply;
+    bool isPVNode = info.isPVNode;
+    bool isCapture = info.isCapture;
     node_count++;
+    
+
+    bool improving = true;
+
+    if(info.prevMove != nullptr) {
+        if(info.prevMove->prevMove != nullptr) {
+            improving = score > info.prevMove->prevMove->score;
+        }
+    }
 
     uint64_t kingBan = 0;
     if (depth >= 1) {
@@ -201,7 +237,7 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
     // maybe (!isCapture)
     if ((!isPVNode) && (!inCheck) && (depth >= 1) && (depth <= 4)) {
         int staticEval = -score;
-        int margin = 150 * depth;
+        int margin = 100 * depth /(improving ? 2 : 1);
 
         if (staticEval >= beta + margin) {
             return staticEval;
@@ -219,8 +255,19 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
     if (depth == 0) {
         // return -score;
         //
-        return quiescence<status>(brd, ep, alpha, beta, score, key, 5,
-                                  irreversibleCount, 0, isPVNode, 0);
+        minimax_info_t quiescenceInfo;
+        quiescenceInfo.ep = ep;
+        quiescenceInfo.alpha = alpha;
+        quiescenceInfo.beta = beta;
+        quiescenceInfo.score = score;
+        quiescenceInfo.key = key;
+        quiescenceInfo.depth = 5;
+        quiescenceInfo.irreversibleCount = irreversibleCount;
+        quiescenceInfo.ply = 0;
+        quiescenceInfo.isPVNode = isPVNode;
+        quiescenceInfo.isCapture = 0;
+        quiescenceInfo.prevMove = &info;
+        return quiescence<status>(brd, quiescenceInfo);
     } else {
         prevHash.push_back(key);
         if (irreversibleCount >= 4) {
@@ -267,17 +314,27 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
         }
 
         // bool inWindow = (alpha == (beta - 1));
-        if (depth >= 3 && !inCheck && !isPVNode && !isCapture &&
+        if (depth >= 4 && !inCheck && !isPVNode && !isCapture &&
             hasSufficientMaterial) {
-            const int R = 3;
+            const int R = improving ? 4 : 3;
 
             constexpr BoardState NextState =
                 BoardState(!status.IsWhite, false, status.WLC, status.WRC,
                            status.BLC, status.BRC);
+            minimax_info_t nullMoveInfo;
 
-            int nullMoveScore = -minimax<NextState>(
-                brd, ep, -beta, -beta + 1, -score, toggle_side_to_move(key),
-                depth - R, irreversibleCount + 1, ply + 1, false, false);
+            nullMoveInfo.ep = ep;
+            nullMoveInfo.alpha = -beta;
+            nullMoveInfo.beta = -beta + 1;
+            nullMoveInfo.score = -score;
+            nullMoveInfo.key = toggle_side_to_move(key);
+            nullMoveInfo.depth = depth - R;
+            nullMoveInfo.irreversibleCount = irreversibleCount + 1;
+            nullMoveInfo.ply = ply + 1;
+            nullMoveInfo.isPVNode = false;
+            nullMoveInfo.isCapture = false;
+            nullMoveInfo.prevMove = &info;
+            int nullMoveScore = -minimax<NextState>(brd, nullMoveInfo);
 
             if (nullMoveScore >= beta) {
                 prevHash.pop_back();
@@ -347,40 +404,67 @@ inline int minimax(const Board &brd, int ep, int alpha, int beta, int score,
             bool doFullSearch = true;
             int reduction = 0;
 
+            double reductionFactor = 0.0;
+            if(improving) {
+                reductionFactor = 0.0;
+            } else {
+                reductionFactor = -0.0;
+            }
+
             if (!isPVNode && !ml[i].capture && !inCheck && !ml[i].promotion &&
                 depth >= 3 && i > 1) {
-                int baseRed = 1.35 + int(std::log(depth) * std::log(i) / 2.75);
+                int baseRed = 1.35 + int(std::log(depth) * std::log(i) / (2.75 + reductionFactor));
                 reduction = std::clamp(baseRed, 1, depth - 1);
             } else if (!isPVNode && !inCheck && depth >= 3 && i > 1) {
-                int baseRed = 0.2 + int(std::log(depth) * std::log(i) / 3.35);
+                int baseRed = 0.2 + int(std::log(depth) * std::log(i) / (3.35 + reductionFactor));
                 reduction = std::clamp(baseRed, 1, depth - 1);
             }
 
             if (reduction > 0) {
                 doFullSearch = false;
-                eval = -ml[i].move(brd, ml[i].from, ml[i].to, -alpha - 1,
-                                   -alpha, -score, key, depth - reduction,
-                                   irreversibleCount, ply + 1, false);
+                move_info_t moveInfo;
+                moveInfo.from = ml[i].from;
+                moveInfo.to = ml[i].to;
+                moveInfo.alpha = -alpha - 1;
+                moveInfo.beta = -alpha;
+                moveInfo.score = -score;
+                moveInfo.key = key;
+                moveInfo.depth = depth - reduction;
+                moveInfo.irreversibleCount = irreversibleCount;
+                moveInfo.ply = ply + 1;
+                moveInfo.isPVNode = false;
+                moveInfo.prevMove = &info;
+                eval = -ml[i].move(brd, moveInfo);
                 if (eval > alpha) {
                     doFullSearch = true;
                 }
             }
 
             if (doFullSearch) {
+                move_info_t moveInfo;
+                moveInfo.from = ml[i].from;
+                moveInfo.to = ml[i].to;
+                moveInfo.alpha = -beta;
+                moveInfo.beta = -alpha;
+                moveInfo.score = -score;
+                moveInfo.key = key;
+                moveInfo.depth = depth - 1 + extension;
+                moveInfo.irreversibleCount = irreversibleCount;
+                moveInfo.ply = ply + 1;
+                moveInfo.isPVNode = isPVNode;
+                moveInfo.prevMove = &info;
+
                 if (firstMove) {
-                    eval = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha,
-                                       -score, key, depth - 1 + extension,
-                                       irreversibleCount, ply + 1, isPVNode);
+                    eval = -ml[i].move(brd, moveInfo);
                 } else {
-                    eval = -ml[i].move(brd, ml[i].from, ml[i].to, -alpha - 1,
-                                       -alpha, -score, key, depth - 1 + extension,
-                                       irreversibleCount, ply + 1, false);
+                    moveInfo.alpha = -alpha - 1;
+                    moveInfo.isPVNode = false;
+                    eval = -ml[i].move(brd, moveInfo);
 
                     if (eval > alpha && eval < beta) {
-                        eval =
-                            -ml[i].move(brd, ml[i].from, ml[i].to, -beta,
-                                        -alpha, -score, key, depth - 1+ extension,
-                                        irreversibleCount, ply + 1, isPVNode);
+                        moveInfo.alpha = -beta;
+                        moveInfo.isPVNode = isPVNode;
+                        eval = -ml[i].move(brd, moveInfo);
                     }
                 }
             }
@@ -512,9 +596,20 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
             for (int i = 0; i < count; i++) {
                 int eval;
 
-                eval = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha,
-                                   score, key, depth - 1, irreversibleCount, 1,
-                                   firstMove);
+                move_info_t moveInfo;
+                moveInfo.from = ml[i].from;
+                moveInfo.to = ml[i].to;
+                moveInfo.alpha = -beta;
+                moveInfo.beta = -alpha;
+                moveInfo.score = score;
+                moveInfo.key = key;
+                moveInfo.depth = depth - 1;
+                moveInfo.irreversibleCount = irreversibleCount;
+                moveInfo.ply = 1;
+                moveInfo.isPVNode = firstMove;
+                moveInfo.prevMove = nullptr;
+
+                eval = -ml[i].move(brd, moveInfo);
                 firstMove = false;
 
                 if (eval > bestEval) {
@@ -555,9 +650,20 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
     if (depth < 6) {
         for (int i = 0; i < count; i++) {
             int eval;
+            move_info_t moveInfo;
+            moveInfo.from = ml[i].from;
+            moveInfo.to = ml[i].to;
+            moveInfo.alpha = -beta;
+            moveInfo.beta = -alpha;
+            moveInfo.score = score;
+            moveInfo.key = key;
+            moveInfo.depth = depth - 1;
+            moveInfo.irreversibleCount = irreversibleCount;
+            moveInfo.ply = 1;
+            moveInfo.isPVNode = firstMove;
+            moveInfo.prevMove = nullptr;
 
-            eval = -ml[i].move(brd, ml[i].from, ml[i].to, -beta, -alpha, score,
-                               key, depth - 1, irreversibleCount, 0, firstMove);
+            eval = -ml[i].move(brd, moveInfo);
             firstMove = false;
 
             if (shouldStop.load()) {

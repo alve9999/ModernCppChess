@@ -4,6 +4,7 @@
 #include "eval.hpp"
 #include "hash.hpp"
 #include "move.hpp"
+#include "minimax_info.hpp"
 #include <cstdint>
 #include <functional>
 #include <sys/types.h>
@@ -349,8 +350,7 @@ struct MoveResult {
     BoardState state;
 };
 
-using SearchMoveFunc = int (*)(const Board &, int, int, int, int, int, uint64_t,
-                               int, int, int, bool);
+using SearchMoveFunc = int (*)(const Board &, move_info_t&);
 using MakeMoveFunc = MoveResult (*)(const Board &, int, int);
 
 struct Callback {
@@ -832,11 +832,37 @@ inline uint64_t toggle_side_to_move(uint64_t key) {
 
 #include "hash.hpp"
 
+
+#define CREATE_SEARCH_INFO(ep_val, irreversible_val, capture_val) \
+    minimax_info_t searchInfo; \
+    searchInfo.ep = ep_val; \
+    searchInfo.alpha = alpha; \
+    searchInfo.beta = beta; \
+    searchInfo.score = score + delta; \
+    searchInfo.key = newKey; \
+    searchInfo.depth = depth; \
+    searchInfo.irreversibleCount = irreversible_val; \
+    searchInfo.ply = ply; \
+    searchInfo.isPVNode = isPVNode; \
+    searchInfo.isCapture = capture_val; \
+    searchInfo.prevMove = prevMove; \
+
+#define EXTRACT_MOVE_INFO(info) \
+    int from = info.from; \
+    int to = info.to; \
+    int alpha = info.alpha; \
+    int beta = info.beta; \
+    int score = info.score; \
+    uint64_t key = info.key; \
+    int depth = info.depth; \
+    int irreversibleCount = info.irreversibleCount; \
+    int ply = info.ply; \
+    bool isPVNode = info.isPVNode; \
+    minimax_info_t* prevMove = info.prevMove; \
+
 template <class BoardState status>
-constexpr inline int pawnMove(const Board &brd, int from, int to, int alpha,
-                              int beta, int score, uint64_t key, int depth,
-                              int irreversibleCount, int ply,
-                              bool isPVNode) noexcept {
+constexpr inline int pawnMove(const Board &brd, move_info_t& info) noexcept {
+    EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.move<BoardPiece::Pawn, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
 
@@ -845,16 +871,14 @@ constexpr inline int pawnMove(const Board &brd, int from, int to, int alpha,
 
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 0, from, to);
     newKey = toggle_side_to_move(newKey);
-
-    return searchFunc<status.normal()>(newBoard, -1, alpha, beta, score + delta,
-                                       newKey, depth, 0, ply, isPVNode, 0);
+    CREATE_SEARCH_INFO(-1, 0, 0);
+    return searchFunc<status.normal()>(newBoard, searchInfo);
 }
 
 template <class BoardState status>
 constexpr inline int
-pawnDoubleMove(const Board &brd, int from, int to, int alpha, int beta,
-               int score, uint64_t key, int depth, int irreversibleCount,
-               int ply, bool isPVNode) noexcept {
+pawnDoubleMove(const Board &brd, move_info_t& info) noexcept {
+    EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.move<BoardPiece::Pawn, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
 
@@ -863,17 +887,13 @@ pawnDoubleMove(const Board &brd, int from, int to, int alpha, int beta,
 
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 0, from, to);
     newKey = toggle_side_to_move(newKey);
-
-    return searchFunc<status.pawn()>(newBoard, to + (status.IsWhite ? -8 : 8),
-                                     alpha, beta, score + delta, newKey, depth,
-                                     0, ply, isPVNode, 0);
+    CREATE_SEARCH_INFO(to+(status.IsWhite ? -8 : 8), 0, 0);
+    return searchFunc<status.pawn()>(newBoard, searchInfo);
 }
 
 template <class BoardState status, bool quite>
-constexpr inline int pawnCapture(const Board &brd, int from, int to, int alpha,
-                                 int beta, int score, uint64_t key, int depth,
-                                 int irreversibleCount, int ply,
-                                 bool isPVNode) noexcept {
+constexpr inline int pawnCapture(const Board &brd, move_info_t& info) noexcept {
+    EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.capture<BoardPiece::Pawn, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
 
@@ -886,22 +906,17 @@ constexpr inline int pawnCapture(const Board &brd, int from, int to, int alpha,
         key, 0, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
 
+    CREATE_SEARCH_INFO(-1, 0, 1);
     if constexpr (quite) {
-        return quiescence<status.normal()>(newBoard, -1, alpha, beta,
-                                           score + delta, newKey, depth, 0, ply,
-                                           isPVNode, 1);
+        return quiescence<status.normal()>(newBoard,searchInfo);
     } else {
-        return searchFunc<status.normal()>(newBoard, -1, alpha, beta,
-                                           score + delta, newKey, depth, 0, ply,
-                                           isPVNode, 1);
+        return searchFunc<status.normal()>(newBoard, searchInfo);
     }
 }
 
 template <class BoardState status>
-constexpr inline int promote(const Board &brd, int from, int to, int alpha,
-                             int beta, int score, uint64_t key, int depth,
-                             int irreversibleCount, int ply,
-                             bool isPVNode) noexcept {
+constexpr inline int promote(const Board &brd, move_info_t& info) noexcept {
+    EXTRACT_MOVE_INFO(info);
     int delta =
         calculateMoveScoreDelta<status.IsWhite, BoardPiece::Pawn>(from, to);
 
@@ -926,37 +941,15 @@ constexpr inline int promote(const Board &brd, int from, int to, int alpha,
     Board newBoard1 = brd.promote<BoardPiece::Queen, status.IsWhite, status.WLC,
                                   status.WRC, status.BLC, status.BRC>(from, to);
 
-    int val =
-        searchFunc<status.normal()>(newBoard1, -1, alpha, beta, score + delta,
-                                    newKey, depth, 0, ply, isPVNode, 0);
+    CREATE_SEARCH_INFO(-1, 0, 0);
 
-    return val;
-    Board newBoard2 = brd.promote<BoardPiece::Rook, status.IsWhite, status.WLC,
-                                  status.WRC, status.BLC, status.BRC>(from, to);
-    int val2 =
-        searchFunc<status.normal()>(newBoard2, -1, alpha, beta, score + delta,
-                                    newKey, depth, 0, ply, isPVNode, 0);
-
-    Board newBoard3 =
-        brd.promote<BoardPiece::Bishop, status.IsWhite, status.WLC, status.WRC,
-                    status.BLC, status.BRC>(from, to);
-    int val3 =
-        searchFunc<status.normal()>(newBoard3, -1, alpha, beta, score + delta,
-                                    newKey, depth, 0, ply, isPVNode, 0);
-
-    Board newBoard4 =
-        brd.promote<BoardPiece::Knight, status.IsWhite, status.WLC, status.WRC,
-                    status.BLC, status.BRC>(from, to);
-    int val4 =
-        searchFunc<status.normal()>(newBoard4, -1, alpha, beta, score + delta,
-                                    newKey, depth, 0, ply, isPVNode, 0);
+    return searchFunc<status.normal()>(newBoard1, searchInfo);
 }
 
 template <class BoardState status, bool quite>
 constexpr inline int
-promoteCapture(const Board &brd, int from, int to, int alpha, int beta,
-               int score, uint64_t key, int depth, int irreversibleCount,
-               int ply, bool isPVNode) noexcept {
+promoteCapture(const Board &brd, move_info_t& info) noexcept {
+    EXTRACT_MOVE_INFO(info);
     int capturedPiece = getCapturePiece<status.IsWhite>(brd, to);
     int delta =
         calculateMoveScoreDelta<status.IsWhite, BoardPiece::Pawn>(from, to);
@@ -998,42 +991,18 @@ promoteCapture(const Board &brd, int from, int to, int alpha, int beta,
         brd.promoteCapture<BoardPiece::Queen, status.IsWhite, status.WLC,
                            status.WRC, status.BLC, status.BRC>(from, to);
 
+    CREATE_SEARCH_INFO(-1, 0, 1);
+
     if constexpr (quite) {
-        return quiescence<status.normal()>(newBoard1, -1, alpha, beta,
-                                           score + delta, newKey, depth, 0, ply,
-                                           isPVNode, 1);
+        return quiescence<status.normal()>(newBoard1, searchInfo);
     } else {
-        return searchFunc<status.normal()>(newBoard1, -1, alpha, beta,
-                                           score + delta, newKey, depth, 0, ply,
-                                           isPVNode, 1);
+        return searchFunc<status.normal()>(newBoard1, searchInfo);
     }
-    Board newBoard2 =
-        brd.promoteCapture<BoardPiece::Rook, status.IsWhite, status.WLC,
-                           status.WRC, status.BLC, status.BRC>(from, to);
-    int val2 =
-        searchFunc<status.normal()>(newBoard2, -1, alpha, beta, score + delta,
-                                    newKey, depth, 0, ply, isPVNode, 1);
-
-    Board newBoard3 =
-        brd.promoteCapture<BoardPiece::Bishop, status.IsWhite, status.WLC,
-                           status.WRC, status.BLC, status.BRC>(from, to);
-    int val3 =
-        searchFunc<status.normal()>(newBoard3, -1, alpha, beta, score + delta,
-                                    newKey, depth, 0, ply, isPVNode, 1);
-
-    Board newBoard4 =
-        brd.promoteCapture<BoardPiece::Knight, status.IsWhite, status.WLC,
-                           status.WRC, status.BLC, status.BRC>(from, to);
-    int val4 =
-        searchFunc<status.normal()>(newBoard4, -1, alpha, beta, score + delta,
-                                    newKey, depth, 0, ply, isPVNode, 1);
 }
 
 template <class BoardState status>
-constexpr inline int EP(const Board &brd, int from, int to, int alpha, int beta,
-                        int score, uint64_t key, int depth,
-                        int irreversibleCount, int ply,
-                        bool isPVNode) noexcept {
+constexpr inline int EP(const Board &brd, move_info_t& info) noexcept {
+    EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.EP<BoardPiece::Pawn, status.IsWhite, status.WLC,
                             status.WRC, status.BLC, status.BRC>(from, to);
     int delta =
@@ -1049,15 +1018,14 @@ constexpr inline int EP(const Board &brd, int from, int to, int alpha, int beta,
     uint64_t newKey = update_hash_en_passant<status.IsWhite>(key, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    return searchFunc<status.pawn()>(newBoard, -1, alpha, beta, score + delta,
-                                     newKey, depth, 0, ply, isPVNode, 1);
+    CREATE_SEARCH_INFO(-1, 0, 1);
+    
+    return searchFunc<status.pawn()>(newBoard, searchInfo);
 }
 
 template <class BoardState status>
-constexpr inline int knightMove(const Board &brd, int from, int to, int alpha,
-                                int beta, int score, uint64_t key, int depth,
-                                int irreversibleCount, int ply,
-                                bool isPVNode) noexcept {
+constexpr inline int knightMove(const Board &brd, move_info_t& info) noexcept {
+    EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.move<BoardPiece::Knight, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
     int delta =
@@ -1066,16 +1034,14 @@ constexpr inline int knightMove(const Board &brd, int from, int to, int alpha,
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 1, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    return searchFunc<status.normal()>(newBoard, -1, alpha, beta, score + delta,
-                                       newKey, depth, irreversibleCount + 1,
-                                       ply, isPVNode, 0);
+    CREATE_SEARCH_INFO(-1, irreversibleCount + 1, 0);
+    
+    return searchFunc<status.normal()>(newBoard, searchInfo);
 }
 
 template <class BoardState status, bool quite>
-constexpr inline int knightCapture(const Board &brd, int from, int to,
-                                   int alpha, int beta, int score, uint64_t key,
-                                   int depth, int irreversibleCount, int ply,
-                                   bool isPVNode) noexcept {
+constexpr inline int knightCapture(const Board &brd, move_info_t& info) noexcept {
+    EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.capture<BoardPiece::Knight, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
 
@@ -1087,22 +1053,18 @@ constexpr inline int knightCapture(const Board &brd, int from, int to,
         key, 1, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
 
+    CREATE_SEARCH_INFO(-1, 0, 1);
+
     if constexpr (quite) {
-        return quiescence<status.normal()>(newBoard, -1, alpha, beta,
-                                           score + delta, newKey, depth, 0, ply,
-                                           isPVNode, 1);
+        return quiescence<status.normal()>(newBoard, searchInfo);
     } else {
-        return searchFunc<status.normal()>(newBoard, -1, alpha, beta,
-                                           score + delta, newKey, depth, 0, ply,
-                                           isPVNode, 1);
+        return searchFunc<status.normal()>(newBoard, searchInfo);
     }
 }
 
 template <class BoardState status>
-constexpr inline int bishopMove(const Board &brd, int from, int to, int alpha,
-                                int beta, int score, uint64_t key, int depth,
-                                int irreversibleCount, int ply,
-                                bool isPVNode) noexcept {
+constexpr inline int bishopMove(const Board &brd, move_info_t& info) noexcept {
+    EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.move<BoardPiece::Bishop, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
     int delta =
@@ -1111,16 +1073,14 @@ constexpr inline int bishopMove(const Board &brd, int from, int to, int alpha,
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 2, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    return searchFunc<status.normal()>(newBoard, -1, alpha, beta, score + delta,
-                                       newKey, depth, irreversibleCount + 1,
-                                       ply, isPVNode, 0);
+    CREATE_SEARCH_INFO(-1, irreversibleCount + 1, 0);
+    
+    return searchFunc<status.normal()>(newBoard, searchInfo);
 }
 
 template <class BoardState status, bool quite>
-constexpr inline int bishopCapture(const Board &brd, int from, int to,
-                                   int alpha, int beta, int score, uint64_t key,
-                                   int depth, int irreversibleCount, int ply,
-                                   bool isPVNode) noexcept {
+constexpr inline int bishopCapture(const Board &brd, move_info_t& info) noexcept {
+    EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.capture<BoardPiece::Bishop, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
     int capturedPiece = getCapturePiece<status.IsWhite>(brd, to);
@@ -1131,22 +1091,18 @@ constexpr inline int bishopCapture(const Board &brd, int from, int to,
         key, 2, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
 
+    CREATE_SEARCH_INFO(-1, 0, 1);
+    
     if constexpr (quite) {
-        return quiescence<status.normal()>(newBoard, -1, alpha, beta,
-                                           score + delta, newKey, depth, 0, ply,
-                                           isPVNode, 1);
+        return quiescence<status.normal()>(newBoard, searchInfo);
     } else {
-        return searchFunc<status.normal()>(newBoard, -1, alpha, beta,
-                                           score + delta, newKey, depth, 0, ply,
-                                           isPVNode, 1);
+        return searchFunc<status.normal()>(newBoard, searchInfo);
     }
 }
 
 template <class BoardState status>
-constexpr inline int rookMove(const Board &brd, int from, int to, int alpha,
-                              int beta, int score, uint64_t key, int depth,
-                              int irreversibleCount, int ply,
-                              bool isPVNode) noexcept {
+constexpr inline int rookMove(const Board &brd, move_info_t& info) noexcept {
+    EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.move<BoardPiece::Rook, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
     int delta =
@@ -1155,48 +1111,42 @@ constexpr inline int rookMove(const Board &brd, int from, int to, int alpha,
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 3, from, to);
     newKey = toggle_side_to_move(newKey);
 
+    CREATE_SEARCH_INFO(-1, 0, 0);
     if constexpr (status.IsWhite) {
         if constexpr (status.WLC) {
             if (from == 0) {
                 return searchFunc<status.rookMoveLeft()>(
-                    newBoard, -1, alpha, beta, score + delta, newKey, depth, 0,
-                    ply, isPVNode, 0);
+                    newBoard, searchInfo);
             }
         }
         if constexpr (status.WRC) {
             if (from == 7) {
                 return searchFunc<status.rookMoveRight()>(
-                    newBoard, -1, alpha, beta, score + delta, newKey, depth, 0,
-                    ply, isPVNode, 0);
+                    newBoard, searchInfo);
             }
         }
     } else {
         if constexpr (status.BLC) {
             if (from == 56) {
                 return searchFunc<status.rookMoveLeft()>(
-                    newBoard, -1, alpha, beta, score + delta, newKey, depth, 0,
-                    ply, isPVNode, 0);
+                    newBoard, searchInfo);
             }
         }
         if constexpr (status.BRC) {
             if (from == 63) {
                 return searchFunc<status.rookMoveRight()>(
-                    newBoard, -1, alpha, beta, score + delta, newKey, depth, 0,
-                    ply, isPVNode, 0);
+                    newBoard, searchInfo);
             }
         }
     }
 
-    return searchFunc<status.normal()>(newBoard, -1, alpha, beta, score + delta,
-                                       newKey, depth, irreversibleCount + 1,
-                                       ply, isPVNode, 0);
+    searchInfo.irreversibleCount = irreversibleCount + 1;
+    return searchFunc<status.normal()>(newBoard, searchInfo);
 }
 
 template <class BoardState status, bool quite>
-constexpr inline int rookCapture(const Board &brd, int from, int to, int alpha,
-                                 int beta, int score, uint64_t key, int depth,
-                                 int irreversibleCount, int ply,
-                                 bool isPVNode) noexcept {
+constexpr inline int rookCapture(const Board &brd, move_info_t& info) noexcept {
+    EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.capture<BoardPiece::Rook, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
     int capturedPiece = getCapturePiece<status.IsWhite>(brd, to);
@@ -1207,17 +1157,16 @@ constexpr inline int rookCapture(const Board &brd, int from, int to, int alpha,
         key, 3, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
 
+    CREATE_SEARCH_INFO(-1, 0, 1);
     if constexpr (status.IsWhite) {
         if constexpr (status.WLC) {
             if (from == 0) {
                 if constexpr (quite) {
                     return quiescence<status.rookMoveLeft()>(
-                        newBoard, -1, alpha, beta, score + delta, newKey, depth,
-                        0, ply, isPVNode, 1);
+                        newBoard, searchInfo);
                 } else {
                     return searchFunc<status.rookMoveLeft()>(
-                        newBoard, -1, alpha, beta, score + delta, newKey, depth,
-                        0, ply, isPVNode, 1);
+                        newBoard, searchInfo);
                 }
             }
         }
@@ -1225,12 +1174,10 @@ constexpr inline int rookCapture(const Board &brd, int from, int to, int alpha,
             if (from == 7) {
                 if constexpr (quite) {
                     return quiescence<status.rookMoveRight()>(
-                        newBoard, -1, alpha, beta, score + delta, newKey, depth,
-                        0, ply, isPVNode, 1);
+                        newBoard, searchInfo);
                 } else {
                     return searchFunc<status.rookMoveRight()>(
-                        newBoard, -1, alpha, beta, score + delta, newKey, depth,
-                        0, ply, isPVNode, 1);
+                        newBoard, searchInfo);
                 }
             }
         }
@@ -1239,12 +1186,10 @@ constexpr inline int rookCapture(const Board &brd, int from, int to, int alpha,
             if (from == 56) {
                 if constexpr (quite) {
                     return quiescence<status.rookMoveLeft()>(
-                        newBoard, -1, alpha, beta, score + delta, newKey, depth,
-                        0, ply, isPVNode, 1);
+                        newBoard, searchInfo);
                 } else {
                     return searchFunc<status.rookMoveLeft()>(
-                        newBoard, -1, alpha, beta, score + delta, newKey, depth,
-                        0, ply, isPVNode, 1);
+                        newBoard, searchInfo);
                 }
             }
         }
@@ -1252,32 +1197,25 @@ constexpr inline int rookCapture(const Board &brd, int from, int to, int alpha,
             if (from == 63) {
                 if constexpr (quite) {
                     return quiescence<status.rookMoveRight()>(
-                        newBoard, -1, alpha, beta, score + delta, newKey, depth,
-                        0, ply, isPVNode, 1);
+                        newBoard, searchInfo);
                 } else {
                     return searchFunc<status.rookMoveRight()>(
-                        newBoard, -1, alpha, beta, score + delta, newKey, depth,
-                        0, ply, isPVNode, 1);
+                        newBoard, searchInfo);
                 }
             }
         }
     }
+
     if constexpr (quite) {
-        return quiescence<status.normal()>(newBoard, -1, alpha, beta,
-                                           score + delta, newKey, depth, 0, ply,
-                                           isPVNode, 1);
+        return quiescence<status.normal()>(newBoard, searchInfo);
     } else {
-        return searchFunc<status.normal()>(newBoard, -1, alpha, beta,
-                                           score + delta, newKey, depth, 0, ply,
-                                           isPVNode, 1);
+        return searchFunc<status.normal()>(newBoard, searchInfo);
     }
 }
 
 template <class BoardState status>
-constexpr inline int queenMove(const Board &brd, int from, int to, int alpha,
-                               int beta, int score, uint64_t key, int depth,
-                               int irreversibleCount, int ply,
-                               bool isPVNode) noexcept {
+constexpr inline int queenMove(const Board &brd, move_info_t& info) noexcept {
+    EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.move<BoardPiece::Queen, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
     int delta =
@@ -1286,16 +1224,14 @@ constexpr inline int queenMove(const Board &brd, int from, int to, int alpha,
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 4, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    return searchFunc<status.normal()>(newBoard, -1, alpha, beta, score + delta,
-                                       newKey, depth, irreversibleCount + 1,
-                                       ply, isPVNode, 0);
+    CREATE_SEARCH_INFO(-1, irreversibleCount + 1, 0);
+
+    return searchFunc<status.normal()>(newBoard, searchInfo);
 }
 
 template <class BoardState status, bool quite>
-constexpr inline int queenCapture(const Board &brd, int from, int to, int alpha,
-                                  int beta, int score, uint64_t key, int depth,
-                                  int irreversibleCount, int ply,
-                                  bool isPVNode) noexcept {
+constexpr inline int queenCapture(const Board &brd, move_info_t& info) noexcept {
+    EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.capture<BoardPiece::Queen, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
 
@@ -1307,22 +1243,18 @@ constexpr inline int queenCapture(const Board &brd, int from, int to, int alpha,
         key, 4, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
 
+    CREATE_SEARCH_INFO(-1, 0, 1);
+    
     if constexpr (quite) {
-        return quiescence<status.normal()>(newBoard, -1, alpha, beta,
-                                           score + delta, newKey, depth, 0, ply,
-                                           isPVNode, 1);
+        return quiescence<status.normal()>(newBoard, searchInfo);
     } else {
-        return searchFunc<status.normal()>(newBoard, -1, alpha, beta,
-                                           score + delta, newKey, depth, 0, ply,
-                                           isPVNode, 1);
+        return searchFunc<status.normal()>(newBoard, searchInfo);
     }
 }
 
 template <class BoardState status>
-constexpr inline int kingMove(const Board &brd, int from, int to, int alpha,
-                              int beta, int score, uint64_t key, int depth,
-                              int irreversibleCount, int ply,
-                              bool isPVNode) noexcept {
+constexpr inline int kingMove(const Board &brd, move_info_t& info) noexcept {
+    EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.move<BoardPiece::King, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
     int delta =
@@ -1331,16 +1263,14 @@ constexpr inline int kingMove(const Board &brd, int from, int to, int alpha,
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 5, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    return searchFunc<status.king()>(newBoard, -1, alpha, beta, score + delta,
-                                     newKey, depth, irreversibleCount + 1, ply,
-                                     isPVNode, 0);
+    CREATE_SEARCH_INFO(-1, irreversibleCount + 1, 0);
+    
+    return searchFunc<status.king()>(newBoard, searchInfo);
 }
 
 template <class BoardState status, bool quite>
-constexpr inline int kingCapture(const Board &brd, int from, int to, int alpha,
-                                 int beta, int score, uint64_t key, int depth,
-                                 int irreversibleCount, int ply,
-                                 bool isPVNode) noexcept {
+constexpr inline int kingCapture(const Board &brd, move_info_t& info) noexcept {
+    EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.capture<BoardPiece::King, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
 
@@ -1352,22 +1282,18 @@ constexpr inline int kingCapture(const Board &brd, int from, int to, int alpha,
         key, 5, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
 
+    CREATE_SEARCH_INFO(-1, 0, 1);
+    
     if constexpr (quite) {
-        return quiescence<status.king()>(newBoard, -1, alpha, beta,
-                                         score + delta, newKey, depth, 0, ply,
-                                         isPVNode, 1);
+        return quiescence<status.king()>(newBoard, searchInfo);
     } else {
-        return searchFunc<status.king()>(newBoard, -1, alpha, beta,
-                                         score + delta, newKey, depth, 0, ply,
-                                         isPVNode, 1);
+        return searchFunc<status.king()>(newBoard, searchInfo);
     }
 }
 
 template <class BoardState status>
-constexpr inline int leftCastel(const Board &brd, int from, int to, int alpha,
-                                int beta, int score, uint64_t key, int depth,
-                                int irreversibleCount, int ply,
-                                bool isPVNode) noexcept {
+constexpr inline int leftCastel(const Board &brd, move_info_t& info) noexcept {
+    EXTRACT_MOVE_INFO(info);
     int delta = 0;
     uint64_t newKey;
     int mg_castling = 0;
@@ -1394,34 +1320,31 @@ constexpr inline int leftCastel(const Board &brd, int from, int to, int alpha,
 
     delta += (mg_phase * mg_castling + eg_phase * eg_castling) / 24;
 
+    
     if constexpr (status.IsWhite) {
         newKey = update_hash_castle<true, false>(key);
         newKey = toggle_side_to_move(newKey);
 
+        CREATE_SEARCH_INFO(-1, 0, 0);
         Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, true,
                                     false, false, false>();
 
-        return searchFunc<status.king()>(newBoard, -1, alpha, beta,
-                                         score + delta, newKey, depth, 0, ply,
-                                         isPVNode, 0);
+        return searchFunc<status.king()>(newBoard, searchInfo);
     } else {
         newKey = update_hash_castle<false, false>(key);
         newKey = toggle_side_to_move(newKey);
 
+        CREATE_SEARCH_INFO(-1, 0, 0);
         Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, false,
                                     false, true, false>();
 
-        return searchFunc<status.king()>(newBoard, -1, alpha, beta,
-                                         score + delta, newKey, depth, 0, ply,
-                                         isPVNode, 0);
+        return searchFunc<status.king()>(newBoard, searchInfo);
     }
 }
 
 template <class BoardState status>
-constexpr inline int rightCastel(const Board &brd, int from, int to, int alpha,
-                                 int beta, int score, uint64_t key, int depth,
-                                 int irreversibleCount, int ply,
-                                 bool isPVNode) noexcept {
+constexpr inline int rightCastel(const Board &brd,move_info_t& info) noexcept {
+    EXTRACT_MOVE_INFO(info);
     int delta = 0;
     uint64_t newKey;
     int mg_castling = 0;
@@ -1448,25 +1371,24 @@ constexpr inline int rightCastel(const Board &brd, int from, int to, int alpha,
 
     delta += (mg_phase * mg_castling + eg_phase * eg_castling) / 24;
 
+    
     if constexpr (status.IsWhite) {
         newKey = update_hash_castle<true, true>(key);
         newKey = toggle_side_to_move(newKey);
 
+        CREATE_SEARCH_INFO(-1, 0, 0);
         Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, false,
                                     true, false, false>();
 
-        return searchFunc<status.king()>(newBoard, -1, alpha, beta,
-                                         score + delta, newKey, depth, 0, ply,
-                                         isPVNode, 0);
+        return searchFunc<status.king()>(newBoard, searchInfo);
     } else {
         newKey = update_hash_castle<false, true>(key);
         newKey = toggle_side_to_move(newKey);
 
+        CREATE_SEARCH_INFO(-1, 0, 0);
         Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, false,
                                     false, false, true>();
 
-        return searchFunc<status.king()>(newBoard, -1, alpha, beta,
-                                         score + delta, newKey, depth, 0, ply,
-                                         isPVNode, 0);
+        return searchFunc<status.king()>(newBoard, searchInfo);
     }
 }

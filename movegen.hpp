@@ -10,8 +10,8 @@
 
 extern int historyTable[2][64][64];
 
-using SearchMoveFunc = int (*)(const Board &, int, int, int, int, int, uint64_t,
-                               int, int, int, bool);
+using SearchMoveFunc = int (*)(const Board &, move_info_t&);
+
 using MakeMoveFunc = MoveResult (*)(const Board &, int, int);
 inline std::string converter(int index) {
     int row = index / 8;
