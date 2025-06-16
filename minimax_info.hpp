@@ -10,6 +10,9 @@ struct minimax_info_t{
     int ply;
     bool isPVNode;
     bool isCapture;
+    bool nullMove;
+    int from;
+    int to;
     minimax_info_t* prevMove;
 };
 

@@ -13,6 +13,7 @@
 bool white = false;
 bool hasBeenActivated = false;
 int historyTable[2][64][64] = {};
+int captureHistoryTable[2][64][64] = {};
 std::vector<uint64_t> prevHash = {};
 int mg_phase = 0;
 int eg_phase = 0;
@@ -194,6 +195,7 @@ void uciRunGame() {
         if (std::cin.peek() != EOF) {
             std::string str;
             std::getline(std::cin, str);
+            setValueFromCommand(str);
             proccessCommand(str, brd, state, irreversibleCount, ep);
         }
     }

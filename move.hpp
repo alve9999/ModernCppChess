@@ -846,6 +846,9 @@ inline uint64_t toggle_side_to_move(uint64_t key) {
     searchInfo.isPVNode = isPVNode; \
     searchInfo.isCapture = capture_val; \
     searchInfo.prevMove = prevMove; \
+    searchInfo.from = from; \
+    searchInfo.to = to; \
+    searchInfo.nullMove = false; \
 
 #define EXTRACT_MOVE_INFO(info) \
     int from = info.from; \

@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD 23)
 
 
 
-add_executable(chess2000 main.cpp board.hpp check.hpp sliding.cpp pawns.hpp constants.hpp movegen.hpp move.hpp uci.cpp eval.hpp ai.hpp hash.cpp SEE.cpp minimax_info.hpp)
+add_executable(chess2000 main.cpp board.hpp check.hpp sliding.cpp pawns.hpp constants.hpp movegen.hpp move.hpp uci.cpp eval.hpp ai.hpp hash.cpp SEE.cpp minimax_info.hpp parameter.cpp)
 
 
 target_precompile_headers(chess2000 PRIVATE pch.h)

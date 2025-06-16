@@ -7,8 +7,10 @@
 #include <cassert>
 #include <cstdint>
 #include <iostream>
+#include "SEE.hpp"
 
 extern int historyTable[2][64][64];
+extern int captureHistoryTable[2][64][64];
 
 using SearchMoveFunc = int (*)(const Board &, move_info_t&);
 
@@ -31,7 +33,7 @@ inline void moveHandle(const Board &brd, const MakeMoveFunc &move, Callback *ml,
     cb.makeMove = move;
     cb.from = from;
     cb.to = to;
-    cb.value = value;
+    cb.value = SEE(brd, from, to)*100;
 }
 
 template <class BoardState status>
