@@ -15,7 +15,7 @@
 #include "SEE.hpp"
 #include "minimax_info.hpp"
 #include "parameter.hpp"
-
+#include "nnue.h"
 
 extern std::atomic<bool> shouldStop;
 extern long node_count;
@@ -41,7 +41,7 @@ constexpr int MAX_KILLER_PLY = 99;
 
 static uint16_t killerMoves[MAX_KILLER_PLY][MAX_KILLER_MOVES] = {0};
 
-
+static int16_t captureHistory[2][64][64] = {0};
 static uint16_t counterHistoryTable[2][64][64] = {0};
 static uint16_t followUpTable[2][64][64] = {0};
 
@@ -125,6 +125,7 @@ inline void ageHistoryTable() {
         for (int from = 0; from < 64; from++) {
             for (int to = 0; to < 64; to++) {
                 historyTable[i][from][to] /= HISTORY_AGE_FACTOR;
+                captureHistory[i][from][to] /= HISTORY_AGE_FACTOR;
             }
         }
     }
@@ -138,6 +139,7 @@ inline void clearHistoryTable() {
         }
     }
 }
+
 #define MAX_HISTORY 10000
 template <bool IsWhite>
 inline void updateHistory(int from, int to, int depth) {
@@ -147,13 +149,21 @@ inline void updateHistory(int from, int to, int depth) {
         historyTable[IsWhite][from][to] * abs(clampedBonus) / MAX_HISTORY;
 }
 
+template <bool IsWhite>
+inline void updateCaptureHistory(int from, int to, int depth) {
+    int clampedBonus = clamp(depth, -MAX_HISTORY, MAX_HISTORY);
+    captureHistory[IsWhite][from][to] +=
+        clampedBonus -
+        captureHistory[IsWhite][from][to] * abs(clampedBonus) / MAX_HISTORY;
+}
+
 
 template <class BoardState status>
 inline int quiescence(const Board &brd, minimax_info_t &info) noexcept {
     int ep = info.ep;
     int alpha = info.alpha;
     int beta = info.beta;
-    int score = info.score;
+    int score = nnue_evaluate(info.accPair, status.IsWhite);
     uint64_t key = info.key;
     int qdepth = info.depth;
     int irreversibleCount = info.irreversibleCount;
@@ -181,7 +191,11 @@ inline int quiescence(const Board &brd, minimax_info_t &info) noexcept {
     Callback ml[217];
     int count = 0;
     genMoves<status, 1, 1>(brd, ep, ml, count);
+    for(int i = 0; i < count; i++) {
+        ml[i].value += captureHistory[status.IsWhite][ml[i].from][ml[i].to];
+    }
 
+    
     sortMoves(ml, count);
     for (int i = 0; i < count; i++) {
         if (ml[i].value < 0) {
@@ -194,6 +208,7 @@ inline int quiescence(const Board &brd, minimax_info_t &info) noexcept {
         moveInfo.alpha = -beta;
         moveInfo.beta = -alpha;
         moveInfo.score = -score;
+        moveInfo.accPair = info.accPair;
         moveInfo.key = key;
         moveInfo.depth = qdepth - 1;
         moveInfo.irreversibleCount = irreversibleCount;
@@ -232,6 +247,8 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
     int ep = info.ep;
     int alpha = info.alpha;
     int beta = info.beta;
+    AccumulatorPair* accPair = info.accPair;
+    info.score = nnue_evaluate(info.accPair, status.IsWhite);
     int score = info.score;
     uint64_t key = info.key;
     int depth = info.depth;
@@ -286,6 +303,7 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
         quiescenceInfo.alpha = alpha;
         quiescenceInfo.beta = beta;
         quiescenceInfo.score = score;
+        quiescenceInfo.accPair = info.accPair;
         quiescenceInfo.key = key;
         quiescenceInfo.depth = 5;
         quiescenceInfo.irreversibleCount = irreversibleCount;
@@ -356,6 +374,7 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
             nullMoveInfo.alpha = -beta;
             nullMoveInfo.beta = -beta + 1;
             nullMoveInfo.score = -score;
+            nullMoveInfo.accPair = info.accPair;
             nullMoveInfo.key = toggle_side_to_move(key);
             nullMoveInfo.depth = depth - R;
             nullMoveInfo.irreversibleCount = irreversibleCount + 1;
@@ -390,6 +409,9 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
             }
             if (!ml[i].capture && !ml[i].promotion) {
                 ml[i].value += getKillerMoveBonus(ml[i].from, ml[i].to, ply);
+            }
+            else{
+                ml[i].value += captureHistory[status.IsWhite][ml[i].from][ml[i].to];
             }
             if(!ml[i].capture && info.prevMove != nullptr && !info.prevMove->nullMove) {
                 ml[i].value += getCounterHistoryBonus(status.IsWhite, info.prevMove->from, info.prevMove->to, ml[i].from, ml[i].to);
@@ -461,6 +483,7 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
                 moveInfo.alpha = -alpha - 1;
                 moveInfo.beta = -alpha;
                 moveInfo.score = -score;
+                moveInfo.accPair = info.accPair;
                 moveInfo.key = key;
                 moveInfo.depth = depth - reduction;
                 moveInfo.irreversibleCount = irreversibleCount;
@@ -480,6 +503,7 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
                 moveInfo.alpha = -beta;
                 moveInfo.beta = -alpha;
                 moveInfo.score = -score;
+                moveInfo.accPair = info.accPair;
                 moveInfo.key = key;
                 moveInfo.depth = depth - 1 + extension;
                 moveInfo.irreversibleCount = irreversibleCount;
@@ -534,6 +558,9 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
                         updateCounterHistory(status.IsWhite, info.prevMove->from, info.prevMove->to, ml[i].from, ml[i].to);
                     }
                 }
+                else{
+                    updateCaptureHistory<status.IsWhite>(ml[i].from, ml[i].to, depth*depth);
+                }
                 for (int j = 0; j < i; j++) {
                     if (!ml[j].capture && !ml[j].promotion) {
                         updateHistory<status.IsWhite>(ml[j].from, ml[j].to,
@@ -575,14 +602,10 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
         pvLength[0] = 0;
     }
 
+    AccumulatorPair* accPair = (AccumulatorPair*)malloc(sizeof(AccumulatorPair));
+    nnue_init(accPair, brd);
     int score;
-    mg_phase = calculatePhaseInterpolation(brd);
-    eg_phase = 24 - mg_phase;
-    if (WH) {
-        score = evaluate<true>(brd);
-    } else {
-        score = evaluate<false>(brd);
-    }
+    score = nnue_evaluate(accPair, WH);
     uint64_t key = create_hash(brd, WH);
     int bestEval = -100000;
     int bestMoveIndex = -1;
@@ -638,6 +661,7 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
                 moveInfo.alpha = -beta;
                 moveInfo.beta = -alpha;
                 moveInfo.score = score;
+                moveInfo.accPair = accPair;
                 moveInfo.key = key;
                 moveInfo.depth = depth - 1;
                 moveInfo.irreversibleCount = irreversibleCount;
@@ -692,6 +716,7 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
             moveInfo.alpha = -beta;
             moveInfo.beta = -alpha;
             moveInfo.score = score;
+            moveInfo.accPair = accPair;
             moveInfo.key = key;
             moveInfo.depth = depth - 1;
             moveInfo.irreversibleCount = irreversibleCount;
@@ -727,7 +752,7 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
         bestTo = ml[bestMoveIndex].to;
         previousEval = bestEval;
     }
-
+    free(accPair);
     // print the stats
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration = end - start;
@@ -751,6 +776,7 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
             return ml[i];
         }
     }
+    std::cout << "Error: Best move not found in move list!"<< bestFrom <<" " << bestTo << std::endl;
     assert(false);
     return ml[0];
 }

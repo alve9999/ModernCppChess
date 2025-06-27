@@ -3,6 +3,7 @@
 #include "constants.hpp"
 #include "eval.hpp"
 #include "hash.hpp"
+#include "nnue.h"
 #include "move.hpp"
 #include "minimax_info.hpp"
 #include <cstdint>
@@ -663,61 +664,6 @@ constexpr inline int getAttackerPiece(const Board &brd, int to) noexcept {
     return capturedPiece;
 }
 
-template <bool IsWhite, BoardPiece Piece>
-constexpr inline int calculateMoveScoreDelta(int from, int to) {
-    int mg_score = 0;
-    int eg_score = 0;
-
-    if constexpr (IsWhite) {
-        mg_score = mg_table[static_cast<int>(Piece)][true][to] -
-                   mg_table[static_cast<int>(Piece)][true][from];
-        eg_score = eg_table[static_cast<int>(Piece)][true][to] -
-                   eg_table[static_cast<int>(Piece)][true][from];
-    } else {
-        mg_score = mg_table[static_cast<int>(Piece)][false][to] -
-                   mg_table[static_cast<int>(Piece)][false][from];
-        eg_score = eg_table[static_cast<int>(Piece)][false][to] -
-                   eg_table[static_cast<int>(Piece)][false][from];
-    }
-
-    int score = (mg_phase * mg_score + eg_phase * eg_score) / 24;
-    return score;
-}
-
-template <bool IsWhite, BoardPiece AttackerPiece>
-constexpr inline int calculateCaptureScoreDelta(int victimPiece, int from,
-                                                int to) {
-
-    int mg_score = 0;
-    int eg_score = 0;
-
-    if constexpr (IsWhite) {
-        mg_score = mg_table[static_cast<int>(AttackerPiece)][true][to] -
-                   mg_table[static_cast<int>(AttackerPiece)][true][from];
-        eg_score = eg_table[static_cast<int>(AttackerPiece)][true][to] -
-                   eg_table[static_cast<int>(AttackerPiece)][true][from];
-    } else {
-        mg_score = mg_table[static_cast<int>(AttackerPiece)][false][to] -
-                   mg_table[static_cast<int>(AttackerPiece)][false][from];
-        eg_score = eg_table[static_cast<int>(AttackerPiece)][false][to] -
-                   eg_table[static_cast<int>(AttackerPiece)][false][from];
-    }
-    if constexpr (IsWhite) {
-        mg_score += mg_table[victimPiece][false][to];
-        eg_score += eg_table[victimPiece][false][to];
-        mg_score += mg_value[victimPiece];
-        eg_score += eg_value[victimPiece];
-    } else {
-        mg_score += mg_table[victimPiece][true][to];
-        eg_score += eg_table[victimPiece][true][to];
-        mg_score += mg_value[victimPiece];
-        eg_score += eg_value[victimPiece];
-    }
-    int delta = (mg_phase * mg_score + eg_phase * eg_score) / 24;
-
-    return delta;
-}
-
 template <bool IsWhite>
 inline uint64_t update_hash_move(uint64_t key, int piece_index, int from,
                                  int to) {
@@ -838,7 +784,7 @@ inline uint64_t toggle_side_to_move(uint64_t key) {
     searchInfo.ep = ep_val; \
     searchInfo.alpha = alpha; \
     searchInfo.beta = beta; \
-    searchInfo.score = score + delta; \
+    searchInfo.score = score; \
     searchInfo.key = newKey; \
     searchInfo.depth = depth; \
     searchInfo.irreversibleCount = irreversible_val; \
@@ -849,6 +795,8 @@ inline uint64_t toggle_side_to_move(uint64_t key) {
     searchInfo.from = from; \
     searchInfo.to = to; \
     searchInfo.nullMove = false; \
+    searchInfo.accPair = accPair; \
+
 
 #define EXTRACT_MOVE_INFO(info) \
     int from = info.from; \
@@ -862,6 +810,9 @@ inline uint64_t toggle_side_to_move(uint64_t key) {
     int ply = info.ply; \
     bool isPVNode = info.isPVNode; \
     minimax_info_t* prevMove = info.prevMove; \
+    AccumulatorPair* accPair = info.accPair; \
+
+
 
 template <class BoardState status>
 constexpr inline int pawnMove(const Board &brd, move_info_t& info) noexcept {
@@ -869,13 +820,15 @@ constexpr inline int pawnMove(const Board &brd, move_info_t& info) noexcept {
     Board newBoard = brd.move<BoardPiece::Pawn, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
 
-    int delta =
-        calculateMoveScoreDelta<status.IsWhite, BoardPiece::Pawn>(from, to);
-
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 0, from, to);
     newKey = toggle_side_to_move(newKey);
+    accumulatorAddPiece(accPair, 0 ,status.IsWhite, to);
+    accumulatorSubPiece(accPair, 0 ,status.IsWhite, from);
     CREATE_SEARCH_INFO(-1, 0, 0);
-    return searchFunc<status.normal()>(newBoard, searchInfo);
+    int val = searchFunc<status.normal()>(newBoard, searchInfo);
+    accumulatorSubPiece(accPair, 0 ,status.IsWhite, to);
+    accumulatorAddPiece(accPair, 0 ,status.IsWhite, from);
+    return val;
 }
 
 template <class BoardState status>
@@ -885,13 +838,15 @@ pawnDoubleMove(const Board &brd, move_info_t& info) noexcept {
     Board newBoard = brd.move<BoardPiece::Pawn, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
 
-    int delta =
-        calculateMoveScoreDelta<status.IsWhite, BoardPiece::Pawn>(from, to);
-
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 0, from, to);
     newKey = toggle_side_to_move(newKey);
+    accumulatorAddPiece(accPair, 0 ,status.IsWhite, to);
+    accumulatorSubPiece(accPair, 0 ,status.IsWhite, from);
     CREATE_SEARCH_INFO(to+(status.IsWhite ? -8 : 8), 0, 0);
-    return searchFunc<status.pawn()>(newBoard, searchInfo);
+    int val = searchFunc<status.pawn()>(newBoard, searchInfo);
+    accumulatorSubPiece(accPair, 0 ,status.IsWhite, to);
+    accumulatorAddPiece(accPair, 0 ,status.IsWhite, from);
+    return val;
 }
 
 template <class BoardState status, bool quite>
@@ -902,51 +857,42 @@ constexpr inline int pawnCapture(const Board &brd, move_info_t& info) noexcept {
 
     int capturedPiece = getCapturePiece<status.IsWhite>(brd, to);
 
-    int delta = calculateCaptureScoreDelta<status.IsWhite, BoardPiece::Pawn>(
-        capturedPiece, from, to);
-
     uint64_t newKey = update_hash_capture<status.IsWhite, !status.IsWhite>(
         key, 0, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
-
+    accumulatorAddPiece(accPair, 0, status.IsWhite, to);
+    accumulatorSubPiece(accPair, 0, status.IsWhite, from);
+    accumulatorSubPiece(accPair, capturedPiece, !status.IsWhite, to);
     CREATE_SEARCH_INFO(-1, 0, 1);
+    int val;
     if constexpr (quite) {
-        return quiescence<status.normal()>(newBoard,searchInfo);
+        val = quiescence<status.normal()>(newBoard,searchInfo);
     } else {
-        return searchFunc<status.normal()>(newBoard, searchInfo);
+        val = searchFunc<status.normal()>(newBoard, searchInfo);
     }
+    accumulatorSubPiece(accPair, 0, status.IsWhite, to);
+    accumulatorAddPiece(accPair, 0, status.IsWhite, from);
+    accumulatorAddPiece(accPair, capturedPiece, !status.IsWhite, to);
+    return val;
 }
 
 template <class BoardState status>
 constexpr inline int promote(const Board &brd, move_info_t& info) noexcept {
     EXTRACT_MOVE_INFO(info);
-    int delta =
-        calculateMoveScoreDelta<status.IsWhite, BoardPiece::Pawn>(from, to);
 
     uint64_t newKey = update_hash_promotion<status.IsWhite>(key, from, to, 4);
     newKey = toggle_side_to_move(newKey);
 
-    if constexpr (status.IsWhite) {
-        int mg_promotion = mg_value[4] - mg_value[0] + mg_table[4][true][to] -
-                           mg_table[0][true][to];
-        int eg_promotion = eg_value[4] - eg_value[0] + eg_table[4][true][to] -
-                           eg_table[0][true][to];
-
-        delta += (mg_phase * mg_promotion + eg_phase * eg_promotion) / 24;
-    } else {
-        int mg_promotion = mg_value[4] - mg_value[0] + mg_table[4][false][to] -
-                           mg_table[0][false][to];
-        int eg_promotion = eg_value[4] - eg_value[0] + eg_table[4][false][to] -
-                           eg_table[0][false][to];
-
-        delta += (mg_phase * mg_promotion + eg_phase * eg_promotion) / 24;
-    }
     Board newBoard1 = brd.promote<BoardPiece::Queen, status.IsWhite, status.WLC,
                                   status.WRC, status.BLC, status.BRC>(from, to);
 
+    accumulatorAddPiece(accPair, 4, status.IsWhite, to);
+    accumulatorSubPiece(accPair, 0, status.IsWhite, from);
     CREATE_SEARCH_INFO(-1, 0, 0);
-
-    return searchFunc<status.normal()>(newBoard1, searchInfo);
+    int val = searchFunc<status.normal()>(newBoard1, searchInfo);
+    accumulatorSubPiece(accPair, 4, status.IsWhite, to);
+    accumulatorAddPiece(accPair, 0, status.IsWhite, from);
+    return val;
 }
 
 template <class BoardState status, bool quite>
@@ -954,53 +900,30 @@ constexpr inline int
 promoteCapture(const Board &brd, move_info_t& info) noexcept {
     EXTRACT_MOVE_INFO(info);
     int capturedPiece = getCapturePiece<status.IsWhite>(brd, to);
-    int delta =
-        calculateMoveScoreDelta<status.IsWhite, BoardPiece::Pawn>(from, to);
 
     uint64_t newKey =
         update_hash_promotion_capture<status.IsWhite, !status.IsWhite>(
             key, capturedPiece, from, to, 4);
     newKey = toggle_side_to_move(newKey);
 
-    if constexpr (status.IsWhite) {
-        int mg_capture =
-            mg_value[capturedPiece] + mg_table[capturedPiece][false][to];
-        int mg_promotion = mg_value[4] - mg_value[0] + mg_table[4][true][to] -
-                           mg_table[0][true][to];
-
-        int eg_capture =
-            eg_value[capturedPiece] + eg_table[capturedPiece][false][to];
-        int eg_promotion = eg_value[4] - eg_value[0] + eg_table[4][true][to] -
-                           eg_table[0][true][to];
-
-        delta += (mg_phase * mg_capture + eg_phase * eg_capture) / 24;
-        delta += (mg_phase * mg_promotion + eg_phase * eg_promotion) / 24;
-    } else {
-        int mg_capture =
-            mg_value[capturedPiece] + mg_table[capturedPiece][true][to];
-        int mg_promotion = mg_value[4] - mg_value[0] + mg_table[4][false][to] -
-                           mg_table[0][false][to];
-
-        int eg_capture =
-            eg_value[capturedPiece] + eg_table[capturedPiece][true][to];
-        int eg_promotion = eg_value[4] - eg_value[0] + eg_table[4][false][to] -
-                           eg_table[0][false][to];
-
-        delta += (mg_phase * mg_capture + eg_phase * eg_capture) / 24;
-        delta += (mg_phase * mg_promotion + eg_phase * eg_promotion) / 24;
-    }
-
     Board newBoard1 =
         brd.promoteCapture<BoardPiece::Queen, status.IsWhite, status.WLC,
                            status.WRC, status.BLC, status.BRC>(from, to);
-
+    
+    accumulatorAddPiece(accPair, 4, status.IsWhite, to);
+    accumulatorSubPiece(accPair, 0, status.IsWhite, from);
+    accumulatorSubPiece(accPair, capturedPiece, !status.IsWhite, to);
     CREATE_SEARCH_INFO(-1, 0, 1);
-
+    int val;
     if constexpr (quite) {
-        return quiescence<status.normal()>(newBoard1, searchInfo);
+        val = quiescence<status.normal()>(newBoard1, searchInfo);
     } else {
-        return searchFunc<status.normal()>(newBoard1, searchInfo);
+        val = searchFunc<status.normal()>(newBoard1, searchInfo);
     }
+    accumulatorSubPiece(accPair, 4, status.IsWhite, to);
+    accumulatorAddPiece(accPair, 0, status.IsWhite, from);
+    accumulatorAddPiece(accPair, capturedPiece, !status.IsWhite, to);
+    return val;
 }
 
 template <class BoardState status>
@@ -1008,22 +931,21 @@ constexpr inline int EP(const Board &brd, move_info_t& info) noexcept {
     EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.EP<BoardPiece::Pawn, status.IsWhite, status.WLC,
                             status.WRC, status.BLC, status.BRC>(from, to);
-    int delta =
-        calculateMoveScoreDelta<status.IsWhite, BoardPiece::Pawn>(from, to);
-    if constexpr (status.IsWhite) {
-        delta += mg_value[0];
-        delta += mg_table[0][false][to - 8];
-    } else {
-        delta += mg_value[0];
-        delta += mg_table[0][true][to + 8];
-    }
 
     uint64_t newKey = update_hash_en_passant<status.IsWhite>(key, from, to);
     newKey = toggle_side_to_move(newKey);
 
+    accumulatorAddPiece(accPair, 0, status.IsWhite, to);
+    accumulatorSubPiece(accPair, 0, status.IsWhite, from);
+    accumulatorSubPiece(accPair, 0, !status.IsWhite,
+                           (status.IsWhite ? to - 8 : to + 8));
     CREATE_SEARCH_INFO(-1, 0, 1);
-    
-    return searchFunc<status.pawn()>(newBoard, searchInfo);
+    int val = searchFunc<status.pawn()>(newBoard, searchInfo);
+    accumulatorSubPiece(accPair, 0, status.IsWhite, to);
+    accumulatorAddPiece(accPair, 0, status.IsWhite, from);
+    accumulatorAddPiece(accPair, 0, !status.IsWhite,
+                        (status.IsWhite ? to - 8 : to + 8));
+    return val;
 }
 
 template <class BoardState status>
@@ -1031,15 +953,17 @@ constexpr inline int knightMove(const Board &brd, move_info_t& info) noexcept {
     EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.move<BoardPiece::Knight, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
-    int delta =
-        calculateMoveScoreDelta<status.IsWhite, BoardPiece::Knight>(from, to);
 
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 1, from, to);
     newKey = toggle_side_to_move(newKey);
 
+    accumulatorAddPiece(accPair, 1, status.IsWhite, to);
+    accumulatorSubPiece(accPair, 1, status.IsWhite, from);
     CREATE_SEARCH_INFO(-1, irreversibleCount + 1, 0);
-    
-    return searchFunc<status.normal()>(newBoard, searchInfo);
+    int val = searchFunc<status.normal()>(newBoard, searchInfo);
+    accumulatorSubPiece(accPair, 1, status.IsWhite, to);
+    accumulatorAddPiece(accPair, 1, status.IsWhite, from);
+    return val;
 }
 
 template <class BoardState status, bool quite>
@@ -1049,20 +973,25 @@ constexpr inline int knightCapture(const Board &brd, move_info_t& info) noexcept
                                  status.WRC, status.BLC, status.BRC>(from, to);
 
     int capturedPiece = getCapturePiece<status.IsWhite>(brd, to);
-    int delta = calculateCaptureScoreDelta<status.IsWhite, BoardPiece::Knight>(
-        capturedPiece, from, to);
 
     uint64_t newKey = update_hash_capture<status.IsWhite, !status.IsWhite>(
         key, 1, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
 
+    accumulatorAddPiece(accPair, 1, status.IsWhite, to);
+    accumulatorSubPiece(accPair, 1, status.IsWhite, from);
+    accumulatorSubPiece(accPair, capturedPiece, !status.IsWhite, to);
     CREATE_SEARCH_INFO(-1, 0, 1);
-
+    int val;
     if constexpr (quite) {
-        return quiescence<status.normal()>(newBoard, searchInfo);
+        val = quiescence<status.normal()>(newBoard, searchInfo);
     } else {
-        return searchFunc<status.normal()>(newBoard, searchInfo);
+        val = searchFunc<status.normal()>(newBoard, searchInfo);
     }
+    accumulatorSubPiece(accPair, 1, status.IsWhite, to);
+    accumulatorAddPiece(accPair, 1, status.IsWhite, from);
+    accumulatorAddPiece(accPair, capturedPiece, !status.IsWhite, to);
+    return val;
 }
 
 template <class BoardState status>
@@ -1070,15 +999,17 @@ constexpr inline int bishopMove(const Board &brd, move_info_t& info) noexcept {
     EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.move<BoardPiece::Bishop, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
-    int delta =
-        calculateMoveScoreDelta<status.IsWhite, BoardPiece::Bishop>(from, to);
 
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 2, from, to);
     newKey = toggle_side_to_move(newKey);
 
+    accumulatorAddPiece(accPair, 2, status.IsWhite, to);
+    accumulatorSubPiece(accPair, 2, status.IsWhite, from);
     CREATE_SEARCH_INFO(-1, irreversibleCount + 1, 0);
-    
-    return searchFunc<status.normal()>(newBoard, searchInfo);
+    int val = searchFunc<status.normal()>(newBoard, searchInfo);
+    accumulatorSubPiece(accPair, 2, status.IsWhite, to);
+    accumulatorAddPiece(accPair, 2, status.IsWhite, from);
+    return val;
 }
 
 template <class BoardState status, bool quite>
@@ -1087,20 +1018,25 @@ constexpr inline int bishopCapture(const Board &brd, move_info_t& info) noexcept
     Board newBoard = brd.capture<BoardPiece::Bishop, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
     int capturedPiece = getCapturePiece<status.IsWhite>(brd, to);
-    int delta = calculateCaptureScoreDelta<status.IsWhite, BoardPiece::Bishop>(
-        capturedPiece, from, to);
 
     uint64_t newKey = update_hash_capture<status.IsWhite, !status.IsWhite>(
         key, 2, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
 
+    accumulatorAddPiece(accPair, 2, status.IsWhite, to);
+    accumulatorSubPiece(accPair, 2, status.IsWhite, from);
+    accumulatorSubPiece(accPair, capturedPiece, !status.IsWhite, to);
     CREATE_SEARCH_INFO(-1, 0, 1);
-    
+    int val;
     if constexpr (quite) {
-        return quiescence<status.normal()>(newBoard, searchInfo);
+        val = quiescence<status.normal()>(newBoard, searchInfo);
     } else {
-        return searchFunc<status.normal()>(newBoard, searchInfo);
+        val = searchFunc<status.normal()>(newBoard, searchInfo);
     }
+    accumulatorSubPiece(accPair, 2, status.IsWhite, to);
+    accumulatorAddPiece(accPair, 2, status.IsWhite, from);
+    accumulatorAddPiece(accPair, capturedPiece, !status.IsWhite, to);
+    return val;
 }
 
 template <class BoardState status>
@@ -1108,43 +1044,51 @@ constexpr inline int rookMove(const Board &brd, move_info_t& info) noexcept {
     EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.move<BoardPiece::Rook, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
-    int delta =
-        calculateMoveScoreDelta<status.IsWhite, BoardPiece::Rook>(from, to);
 
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 3, from, to);
     newKey = toggle_side_to_move(newKey);
 
+    accumulatorAddPiece(accPair, 3, status.IsWhite, to);
+    accumulatorSubPiece(accPair, 3, status.IsWhite, from);
     CREATE_SEARCH_INFO(-1, 0, 0);
+    int val = -2000000;
     if constexpr (status.IsWhite) {
         if constexpr (status.WLC) {
             if (from == 0) {
-                return searchFunc<status.rookMoveLeft()>(
+                val = searchFunc<status.rookMoveLeft()>(
                     newBoard, searchInfo);
             }
         }
         if constexpr (status.WRC) {
             if (from == 7) {
-                return searchFunc<status.rookMoveRight()>(
+                val = searchFunc<status.rookMoveRight()>(
                     newBoard, searchInfo);
             }
         }
+
     } else {
         if constexpr (status.BLC) {
             if (from == 56) {
-                return searchFunc<status.rookMoveLeft()>(
+                val = searchFunc<status.rookMoveLeft()>(
                     newBoard, searchInfo);
             }
         }
         if constexpr (status.BRC) {
             if (from == 63) {
-                return searchFunc<status.rookMoveRight()>(
+                val = searchFunc<status.rookMoveRight()>(
                     newBoard, searchInfo);
             }
         }
-    }
 
-    searchInfo.irreversibleCount = irreversibleCount + 1;
-    return searchFunc<status.normal()>(newBoard, searchInfo);
+    }
+    if (val == -2000000){
+        searchInfo.irreversibleCount = irreversibleCount + 1;
+        val = searchFunc<status.normal()>(
+                newBoard, searchInfo);
+    }
+    accumulatorSubPiece(accPair, 3, status.IsWhite, to);
+    accumulatorAddPiece(accPair, 3, status.IsWhite, from);
+    return val;
 }
 
 template <class BoardState status, bool quite>
@@ -1153,22 +1097,24 @@ constexpr inline int rookCapture(const Board &brd, move_info_t& info) noexcept {
     Board newBoard = brd.capture<BoardPiece::Rook, status.IsWhite, status.WLC,
                                  status.WRC, status.BLC, status.BRC>(from, to);
     int capturedPiece = getCapturePiece<status.IsWhite>(brd, to);
-    int delta = calculateCaptureScoreDelta<status.IsWhite, BoardPiece::Rook>(
-        capturedPiece, from, to);
 
     uint64_t newKey = update_hash_capture<status.IsWhite, !status.IsWhite>(
         key, 3, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
 
+    accumulatorAddPiece(accPair, 3, status.IsWhite, to);
+    accumulatorSubPiece(accPair, 3, status.IsWhite, from);
+    accumulatorSubPiece(accPair, capturedPiece, !status.IsWhite, to);
+    int val = -2000000;
     CREATE_SEARCH_INFO(-1, 0, 1);
     if constexpr (status.IsWhite) {
         if constexpr (status.WLC) {
             if (from == 0) {
                 if constexpr (quite) {
-                    return quiescence<status.rookMoveLeft()>(
+                    val = quiescence<status.rookMoveLeft()>(
                         newBoard, searchInfo);
                 } else {
-                    return searchFunc<status.rookMoveLeft()>(
+                    val = searchFunc<status.rookMoveLeft()>(
                         newBoard, searchInfo);
                 }
             }
@@ -1176,10 +1122,10 @@ constexpr inline int rookCapture(const Board &brd, move_info_t& info) noexcept {
         if constexpr (status.WRC) {
             if (from == 7) {
                 if constexpr (quite) {
-                    return quiescence<status.rookMoveRight()>(
+                    val = quiescence<status.rookMoveRight()>(
                         newBoard, searchInfo);
                 } else {
-                    return searchFunc<status.rookMoveRight()>(
+                    val = searchFunc<status.rookMoveRight()>(
                         newBoard, searchInfo);
                 }
             }
@@ -1188,10 +1134,10 @@ constexpr inline int rookCapture(const Board &brd, move_info_t& info) noexcept {
         if constexpr (status.BLC) {
             if (from == 56) {
                 if constexpr (quite) {
-                    return quiescence<status.rookMoveLeft()>(
+                    val = quiescence<status.rookMoveLeft()>(
                         newBoard, searchInfo);
                 } else {
-                    return searchFunc<status.rookMoveLeft()>(
+                    val = searchFunc<status.rookMoveLeft()>(
                         newBoard, searchInfo);
                 }
             }
@@ -1199,21 +1145,26 @@ constexpr inline int rookCapture(const Board &brd, move_info_t& info) noexcept {
         if constexpr (status.BRC) {
             if (from == 63) {
                 if constexpr (quite) {
-                    return quiescence<status.rookMoveRight()>(
+                    val = quiescence<status.rookMoveRight()>(
                         newBoard, searchInfo);
                 } else {
-                    return searchFunc<status.rookMoveRight()>(
+                    val = searchFunc<status.rookMoveRight()>(
                         newBoard, searchInfo);
                 }
             }
         }
     }
-
-    if constexpr (quite) {
-        return quiescence<status.normal()>(newBoard, searchInfo);
-    } else {
-        return searchFunc<status.normal()>(newBoard, searchInfo);
+    if (val == -2000000) {
+        if constexpr (quite) {
+            val = quiescence<status.normal()>(newBoard, searchInfo);
+        } else {
+            val = searchFunc<status.normal()>(newBoard, searchInfo);
+        }
     }
+    accumulatorSubPiece(accPair, 3, status.IsWhite, to);
+    accumulatorAddPiece(accPair, 3, status.IsWhite, from);
+    accumulatorAddPiece(accPair, capturedPiece, !status.IsWhite, to);
+    return val;
 }
 
 template <class BoardState status>
@@ -1221,15 +1172,17 @@ constexpr inline int queenMove(const Board &brd, move_info_t& info) noexcept {
     EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.move<BoardPiece::Queen, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
-    int delta =
-        calculateMoveScoreDelta<status.IsWhite, BoardPiece::Queen>(from, to);
 
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 4, from, to);
     newKey = toggle_side_to_move(newKey);
 
+    accumulatorAddPiece(accPair, 4, status.IsWhite, to);
+    accumulatorSubPiece(accPair, 4, status.IsWhite, from);
     CREATE_SEARCH_INFO(-1, irreversibleCount + 1, 0);
-
-    return searchFunc<status.normal()>(newBoard, searchInfo);
+    int val = searchFunc<status.normal()>(newBoard, searchInfo);
+    accumulatorSubPiece(accPair, 4, status.IsWhite, to);
+    accumulatorAddPiece(accPair, 4, status.IsWhite, from);
+    return val;
 }
 
 template <class BoardState status, bool quite>
@@ -1239,20 +1192,25 @@ constexpr inline int queenCapture(const Board &brd, move_info_t& info) noexcept 
                                  status.WRC, status.BLC, status.BRC>(from, to);
 
     int capturedPiece = getCapturePiece<status.IsWhite>(brd, to);
-    int delta = calculateCaptureScoreDelta<status.IsWhite, BoardPiece::Queen>(
-        capturedPiece, from, to);
 
     uint64_t newKey = update_hash_capture<status.IsWhite, !status.IsWhite>(
         key, 4, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
 
+    accumulatorAddPiece(accPair, 4, status.IsWhite, to);
+    accumulatorSubPiece(accPair, 4, status.IsWhite, from);
+    accumulatorSubPiece(accPair, capturedPiece, !status.IsWhite, to);
     CREATE_SEARCH_INFO(-1, 0, 1);
-    
+    int val;
     if constexpr (quite) {
-        return quiescence<status.normal()>(newBoard, searchInfo);
+        val = quiescence<status.normal()>(newBoard, searchInfo);
     } else {
-        return searchFunc<status.normal()>(newBoard, searchInfo);
+        val = searchFunc<status.normal()>(newBoard, searchInfo);
     }
+    accumulatorSubPiece(accPair, 4, status.IsWhite, to);
+    accumulatorAddPiece(accPair, 4, status.IsWhite, from);
+    accumulatorAddPiece(accPair, capturedPiece, !status.IsWhite, to);
+    return val;
 }
 
 template <class BoardState status>
@@ -1260,15 +1218,17 @@ constexpr inline int kingMove(const Board &brd, move_info_t& info) noexcept {
     EXTRACT_MOVE_INFO(info);
     Board newBoard = brd.move<BoardPiece::King, status.IsWhite, status.WLC,
                               status.WRC, status.BLC, status.BRC>(from, to);
-    int delta =
-        calculateMoveScoreDelta<status.IsWhite, BoardPiece::King>(from, to);
 
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 5, from, to);
     newKey = toggle_side_to_move(newKey);
 
+    accumulatorAddPiece(accPair, 5, status.IsWhite, to);
+    accumulatorSubPiece(accPair, 5, status.IsWhite, from);
     CREATE_SEARCH_INFO(-1, irreversibleCount + 1, 0);
-    
-    return searchFunc<status.king()>(newBoard, searchInfo);
+    int val = searchFunc<status.king()>(newBoard, searchInfo);
+    accumulatorSubPiece(accPair, 5, status.IsWhite, to);
+    accumulatorAddPiece(accPair, 5, status.IsWhite, from);
+    return val;
 }
 
 template <class BoardState status, bool quite>
@@ -1278,120 +1238,112 @@ constexpr inline int kingCapture(const Board &brd, move_info_t& info) noexcept {
                                  status.WRC, status.BLC, status.BRC>(from, to);
 
     int capturedPiece = getCapturePiece<status.IsWhite>(brd, to);
-    int delta = calculateCaptureScoreDelta<status.IsWhite, BoardPiece::King>(
-        capturedPiece, from, to);
 
     uint64_t newKey = update_hash_capture<status.IsWhite, !status.IsWhite>(
         key, 5, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
 
+    accumulatorAddPiece(accPair, 5, status.IsWhite, to);
+    accumulatorSubPiece(accPair, 5, status.IsWhite, from);
+    accumulatorSubPiece(accPair, capturedPiece, !status.IsWhite, to);
     CREATE_SEARCH_INFO(-1, 0, 1);
-    
+    int val;
     if constexpr (quite) {
-        return quiescence<status.king()>(newBoard, searchInfo);
+        val = quiescence<status.king()>(newBoard, searchInfo);
     } else {
-        return searchFunc<status.king()>(newBoard, searchInfo);
+        val = searchFunc<status.king()>(newBoard, searchInfo);
     }
+    accumulatorSubPiece(accPair, 5, status.IsWhite, to);
+    accumulatorAddPiece(accPair, 5, status.IsWhite, from);
+    accumulatorAddPiece(accPair, capturedPiece, !status.IsWhite, to);
+    return val;
 }
 
 template <class BoardState status>
 constexpr inline int leftCastel(const Board &brd, move_info_t& info) noexcept {
     EXTRACT_MOVE_INFO(info);
-    int delta = 0;
     uint64_t newKey;
-    int mg_castling = 0;
-    int eg_castling = 0;
-    if constexpr (status.IsWhite) {
-        mg_castling = mg_table[static_cast<int>(BoardPiece::King)][true][2] -
-                      mg_table[static_cast<int>(BoardPiece::King)][true][4] +
-                      mg_table[static_cast<int>(BoardPiece::Rook)][true][3] -
-                      mg_table[static_cast<int>(BoardPiece::Rook)][true][0];
-        eg_castling = eg_table[static_cast<int>(BoardPiece::King)][true][2] -
-                      eg_table[static_cast<int>(BoardPiece::King)][true][4] +
-                      eg_table[static_cast<int>(BoardPiece::Rook)][true][3] -
-                      eg_table[static_cast<int>(BoardPiece::Rook)][true][0];
-    } else {
-        mg_castling = mg_table[static_cast<int>(BoardPiece::King)][false][58] -
-                      mg_table[static_cast<int>(BoardPiece::King)][false][60] +
-                      mg_table[static_cast<int>(BoardPiece::Rook)][false][59] -
-                      mg_table[static_cast<int>(BoardPiece::Rook)][false][56];
-        eg_castling = eg_table[static_cast<int>(BoardPiece::King)][false][58] -
-                      eg_table[static_cast<int>(BoardPiece::King)][false][60] +
-                      eg_table[static_cast<int>(BoardPiece::Rook)][false][59] -
-                      eg_table[static_cast<int>(BoardPiece::Rook)][false][56];
-    }
 
-    delta += (mg_phase * mg_castling + eg_phase * eg_castling) / 24;
 
-    
+    int val;
     if constexpr (status.IsWhite) {
         newKey = update_hash_castle<true, false>(key);
         newKey = toggle_side_to_move(newKey);
-
+        
+        accumulatorAddPiece(accPair, 5, status.IsWhite, 2);
+        accumulatorSubPiece(accPair, 5, status.IsWhite, 4);
+        accumulatorAddPiece(accPair, 3, status.IsWhite, 3);
+        accumulatorSubPiece(accPair, 3, status.IsWhite, 0);
         CREATE_SEARCH_INFO(-1, 0, 0);
         Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, true,
                                     false, false, false>();
 
-        return searchFunc<status.king()>(newBoard, searchInfo);
+        val = searchFunc<status.king()>(newBoard, searchInfo);
+        accumulatorSubPiece(accPair, 5, status.IsWhite, 2);
+        accumulatorAddPiece(accPair, 5, status.IsWhite, 4);
+        accumulatorSubPiece(accPair, 3, status.IsWhite, 3);
+        accumulatorAddPiece(accPair, 3, status.IsWhite, 0);
     } else {
         newKey = update_hash_castle<false, false>(key);
         newKey = toggle_side_to_move(newKey);
 
+        accumulatorAddPiece(accPair, 5, status.IsWhite, 58);
+        accumulatorSubPiece(accPair, 5, status.IsWhite, 60);
+        accumulatorAddPiece(accPair, 3, status.IsWhite, 59);
+        accumulatorSubPiece(accPair, 3, status.IsWhite, 56);
         CREATE_SEARCH_INFO(-1, 0, 0);
         Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, false,
                                     false, true, false>();
 
-        return searchFunc<status.king()>(newBoard, searchInfo);
+        val = searchFunc<status.king()>(newBoard, searchInfo);
+        accumulatorSubPiece(accPair, 5, status.IsWhite, 58);
+        accumulatorAddPiece(accPair, 5, status.IsWhite, 60);
+        accumulatorSubPiece(accPair, 3, status.IsWhite, 59);
+        accumulatorAddPiece(accPair, 3, status.IsWhite, 56);
     }
+    return val;
 }
 
 template <class BoardState status>
 constexpr inline int rightCastel(const Board &brd,move_info_t& info) noexcept {
     EXTRACT_MOVE_INFO(info);
-    int delta = 0;
     uint64_t newKey;
-    int mg_castling = 0;
-    int eg_castling = 0;
-    if constexpr (status.IsWhite) {
-        mg_castling = mg_table[static_cast<int>(BoardPiece::King)][true][6] -
-                      mg_table[static_cast<int>(BoardPiece::King)][true][4] +
-                      mg_table[static_cast<int>(BoardPiece::Rook)][true][5] -
-                      mg_table[static_cast<int>(BoardPiece::Rook)][true][7];
-        eg_castling = eg_table[static_cast<int>(BoardPiece::King)][true][6] -
-                      eg_table[static_cast<int>(BoardPiece::King)][true][4] +
-                      eg_table[static_cast<int>(BoardPiece::Rook)][true][5] -
-                      eg_table[static_cast<int>(BoardPiece::Rook)][true][7];
-    } else {
-        mg_castling = mg_table[static_cast<int>(BoardPiece::King)][false][62] -
-                      mg_table[static_cast<int>(BoardPiece::King)][false][60] +
-                      mg_table[static_cast<int>(BoardPiece::Rook)][false][61] -
-                      mg_table[static_cast<int>(BoardPiece::Rook)][false][63];
-        eg_castling = eg_table[static_cast<int>(BoardPiece::King)][false][62] -
-                      eg_table[static_cast<int>(BoardPiece::King)][false][60] +
-                      eg_table[static_cast<int>(BoardPiece::Rook)][false][61] -
-                      eg_table[static_cast<int>(BoardPiece::Rook)][false][63];
-    }
 
-    delta += (mg_phase * mg_castling + eg_phase * eg_castling) / 24;
-
-    
+    int val;
     if constexpr (status.IsWhite) {
         newKey = update_hash_castle<true, true>(key);
         newKey = toggle_side_to_move(newKey);
 
+        accumulatorAddPiece(accPair, 5, status.IsWhite, 6);
+        accumulatorSubPiece(accPair, 5, status.IsWhite, 4);
+        accumulatorAddPiece(accPair, 3, status.IsWhite, 5);
+        accumulatorSubPiece(accPair, 3, status.IsWhite, 7);
         CREATE_SEARCH_INFO(-1, 0, 0);
         Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, false,
                                     true, false, false>();
 
-        return searchFunc<status.king()>(newBoard, searchInfo);
+        val = searchFunc<status.king()>(newBoard, searchInfo);
+        accumulatorSubPiece(accPair, 5, status.IsWhite, 6);
+        accumulatorAddPiece(accPair, 5, status.IsWhite, 4);
+        accumulatorSubPiece(accPair, 3, status.IsWhite, 5);
+        accumulatorAddPiece(accPair, 3, status.IsWhite, 7);
+
     } else {
         newKey = update_hash_castle<false, true>(key);
         newKey = toggle_side_to_move(newKey);
-
+        accumulatorAddPiece(accPair, 5, status.IsWhite, 62);
+        accumulatorSubPiece(accPair, 5, status.IsWhite, 60);
+        accumulatorAddPiece(accPair, 3, status.IsWhite, 61);
+        accumulatorSubPiece(accPair, 3, status.IsWhite, 63);
         CREATE_SEARCH_INFO(-1, 0, 0);
         Board newBoard = brd.castle<BoardPiece::King, status.IsWhite, false,
                                     false, false, true>();
 
-        return searchFunc<status.king()>(newBoard, searchInfo);
+        val = searchFunc<status.king()>(newBoard, searchInfo);
+        accumulatorSubPiece(accPair, 5, status.IsWhite, 62);
+        accumulatorAddPiece(accPair, 5, status.IsWhite, 60);
+        accumulatorSubPiece(accPair, 3, status.IsWhite, 61);
+        accumulatorAddPiece(accPair, 3, status.IsWhite, 63);
     }
+    return val;
 }

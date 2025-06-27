@@ -1,3 +1,5 @@
+#include "SEE.hpp"
+
 
 inline uint64_t getAttackers(const Board& brd, int square) noexcept {
     uint64_t occ = brd.Occ;

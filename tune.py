@@ -29,7 +29,7 @@ def run_match(params,name):
 
     print(setoptions)
     
-    cmd_str = f'cutechess-cli -engine cmd=./chess2000 initstr="{"".join(setoptions)}" name=test -engine cmd=./chess2000 name=op -each tc=5+0.05 proto=uci -games 20 -pgnout result{name}.pgn -openings file=../Pohl.epd format=epd -concurrency 7'
+    cmd_str = f'cutechess-cli -engine cmd=./chess2000 initstr="{"".join(setoptions)}" name=test -engine cmd=./chess2000 name=op -each tc=5+0.05 proto=uci -games 200 -pgnout result{name}.pgn -openings file=../Pohl.epd format=epd -concurrency 7'
     
     print("Running command:", cmd_str)
     

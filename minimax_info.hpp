@@ -1,4 +1,5 @@
 #pragma once
+#include "nnue.h"
 struct minimax_info_t{
     int ep;
     int alpha;
@@ -14,6 +15,7 @@ struct minimax_info_t{
     int from;
     int to;
     minimax_info_t* prevMove;
+    AccumulatorPair* accPair;
 };
 
 struct move_info_t {
@@ -28,4 +30,5 @@ struct move_info_t {
     int ply;
     bool isPVNode;
     minimax_info_t* prevMove;
+    AccumulatorPair* accPair;
 };
