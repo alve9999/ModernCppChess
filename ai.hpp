@@ -363,8 +363,8 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
         // bool inWindow = (alpha == (beta - 1));
         if (depth >= 4 && !inCheck && !isPVNode && !isCapture &&
             hasSufficientMaterial) {
-            const int R = improving ? 4 : 3;
-
+            int R = 3 + depth / 4 + std::min(((-score) - beta) / 200, 3);
+            R = std::clamp(R, 2, depth - 1);
             constexpr BoardState NextState =
                 BoardState(!status.IsWhite, false, status.WLC, status.WRC,
                            status.BLC, status.BRC);
