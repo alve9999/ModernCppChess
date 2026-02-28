@@ -702,8 +702,8 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
                 }
 
                 window *= WINDOW_MULT;
-                lo = previousEval - window;
-                hi = previousEval + window;
+                lo = bestEval - window;
+                hi = bestEval + window;
             }
         }
     }
