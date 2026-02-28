@@ -19,7 +19,10 @@ int16_t activate(int16_t x);
 
 void accumulatorAddPiece(AccumulatorPair* pair, int piece_type, int piece_color, int square);
 
+void accumulatorSubAddCapture(AccumulatorPair* pair, int piece_type, int piece_color, int cap_type, int cap_color, int from, int to, bool undo);
 
 void accumulatorSubPiece(AccumulatorPair* pair, int piece_type, int piece_color, int square);
+
+void accumulatorSubAddPiece(AccumulatorPair* pair, int piece_type, int piece_color, int from, int to);
 
 int nnue_evaluate(AccumulatorPair* pair, int side_to_move);

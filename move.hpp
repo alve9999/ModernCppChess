@@ -822,12 +822,10 @@ constexpr inline int pawnMove(const Board &brd, move_info_t& info) noexcept {
 
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 0, from, to);
     newKey = toggle_side_to_move(newKey);
-    accumulatorAddPiece(accPair, 0 ,status.IsWhite, to);
-    accumulatorSubPiece(accPair, 0 ,status.IsWhite, from);
+    accumulatorSubAddPiece(accPair, 0, status.IsWhite, from, to);
     CREATE_SEARCH_INFO(-1, 0, 0);
     int val = searchFunc<status.normal()>(newBoard, searchInfo);
-    accumulatorSubPiece(accPair, 0 ,status.IsWhite, to);
-    accumulatorAddPiece(accPair, 0 ,status.IsWhite, from);
+    accumulatorSubAddPiece(accPair, 0, status.IsWhite, to, from);
     return val;
 }
 
@@ -840,12 +838,10 @@ pawnDoubleMove(const Board &brd, move_info_t& info) noexcept {
 
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 0, from, to);
     newKey = toggle_side_to_move(newKey);
-    accumulatorAddPiece(accPair, 0 ,status.IsWhite, to);
-    accumulatorSubPiece(accPair, 0 ,status.IsWhite, from);
+    accumulatorSubAddPiece(accPair, 0, status.IsWhite, from, to);
     CREATE_SEARCH_INFO(to+(status.IsWhite ? -8 : 8), 0, 0);
     int val = searchFunc<status.pawn()>(newBoard, searchInfo);
-    accumulatorSubPiece(accPair, 0 ,status.IsWhite, to);
-    accumulatorAddPiece(accPair, 0 ,status.IsWhite, from);
+    accumulatorSubAddPiece(accPair, 0, status.IsWhite, to, from);
     return val;
 }
 
@@ -860,9 +856,7 @@ constexpr inline int pawnCapture(const Board &brd, move_info_t& info) noexcept {
     uint64_t newKey = update_hash_capture<status.IsWhite, !status.IsWhite>(
         key, 0, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
-    accumulatorAddPiece(accPair, 0, status.IsWhite, to);
-    accumulatorSubPiece(accPair, 0, status.IsWhite, from);
-    accumulatorSubPiece(accPair, capturedPiece, !status.IsWhite, to);
+    accumulatorSubAddCapture(accPair, 0, status.IsWhite, capturedPiece, !status.IsWhite, from, to, false);
     CREATE_SEARCH_INFO(-1, 0, 1);
     int val;
     if constexpr (quite) {
@@ -870,9 +864,7 @@ constexpr inline int pawnCapture(const Board &brd, move_info_t& info) noexcept {
     } else {
         val = searchFunc<status.normal()>(newBoard, searchInfo);
     }
-    accumulatorSubPiece(accPair, 0, status.IsWhite, to);
-    accumulatorAddPiece(accPair, 0, status.IsWhite, from);
-    accumulatorAddPiece(accPair, capturedPiece, !status.IsWhite, to);
+    accumulatorSubAddCapture(accPair, 0, status.IsWhite, capturedPiece, !status.IsWhite, to, from, true);
     return val;
 }
 
@@ -909,7 +901,6 @@ promoteCapture(const Board &brd, move_info_t& info) noexcept {
     Board newBoard1 =
         brd.promoteCapture<BoardPiece::Queen, status.IsWhite, status.WLC,
                            status.WRC, status.BLC, status.BRC>(from, to);
-    
     accumulatorAddPiece(accPair, 4, status.IsWhite, to);
     accumulatorSubPiece(accPair, 0, status.IsWhite, from);
     accumulatorSubPiece(accPair, capturedPiece, !status.IsWhite, to);
@@ -934,7 +925,6 @@ constexpr inline int EP(const Board &brd, move_info_t& info) noexcept {
 
     uint64_t newKey = update_hash_en_passant<status.IsWhite>(key, from, to);
     newKey = toggle_side_to_move(newKey);
-
     accumulatorAddPiece(accPair, 0, status.IsWhite, to);
     accumulatorSubPiece(accPair, 0, status.IsWhite, from);
     accumulatorSubPiece(accPair, 0, !status.IsWhite,
@@ -957,12 +947,10 @@ constexpr inline int knightMove(const Board &brd, move_info_t& info) noexcept {
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 1, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    accumulatorAddPiece(accPair, 1, status.IsWhite, to);
-    accumulatorSubPiece(accPair, 1, status.IsWhite, from);
+    accumulatorSubAddPiece(accPair, 1, status.IsWhite, from, to);
     CREATE_SEARCH_INFO(-1, irreversibleCount + 1, 0);
     int val = searchFunc<status.normal()>(newBoard, searchInfo);
-    accumulatorSubPiece(accPair, 1, status.IsWhite, to);
-    accumulatorAddPiece(accPair, 1, status.IsWhite, from);
+    accumulatorSubAddPiece(accPair, 1, status.IsWhite, to, from);
     return val;
 }
 
@@ -977,10 +965,7 @@ constexpr inline int knightCapture(const Board &brd, move_info_t& info) noexcept
     uint64_t newKey = update_hash_capture<status.IsWhite, !status.IsWhite>(
         key, 1, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
-
-    accumulatorAddPiece(accPair, 1, status.IsWhite, to);
-    accumulatorSubPiece(accPair, 1, status.IsWhite, from);
-    accumulatorSubPiece(accPair, capturedPiece, !status.IsWhite, to);
+    accumulatorSubAddCapture(accPair, 1, status.IsWhite, capturedPiece, !status.IsWhite, from, to, false);
     CREATE_SEARCH_INFO(-1, 0, 1);
     int val;
     if constexpr (quite) {
@@ -988,9 +973,7 @@ constexpr inline int knightCapture(const Board &brd, move_info_t& info) noexcept
     } else {
         val = searchFunc<status.normal()>(newBoard, searchInfo);
     }
-    accumulatorSubPiece(accPair, 1, status.IsWhite, to);
-    accumulatorAddPiece(accPair, 1, status.IsWhite, from);
-    accumulatorAddPiece(accPair, capturedPiece, !status.IsWhite, to);
+    accumulatorSubAddCapture(accPair, 1, status.IsWhite, capturedPiece, !status.IsWhite, to, from, true);
     return val;
 }
 
@@ -1003,12 +986,10 @@ constexpr inline int bishopMove(const Board &brd, move_info_t& info) noexcept {
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 2, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    accumulatorAddPiece(accPair, 2, status.IsWhite, to);
-    accumulatorSubPiece(accPair, 2, status.IsWhite, from);
+    accumulatorSubAddPiece(accPair, 2, status.IsWhite, from, to);
     CREATE_SEARCH_INFO(-1, irreversibleCount + 1, 0);
     int val = searchFunc<status.normal()>(newBoard, searchInfo);
-    accumulatorSubPiece(accPair, 2, status.IsWhite, to);
-    accumulatorAddPiece(accPair, 2, status.IsWhite, from);
+    accumulatorSubAddPiece(accPair, 2, status.IsWhite, to, from);
     return val;
 }
 
@@ -1022,10 +1003,7 @@ constexpr inline int bishopCapture(const Board &brd, move_info_t& info) noexcept
     uint64_t newKey = update_hash_capture<status.IsWhite, !status.IsWhite>(
         key, 2, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
-
-    accumulatorAddPiece(accPair, 2, status.IsWhite, to);
-    accumulatorSubPiece(accPair, 2, status.IsWhite, from);
-    accumulatorSubPiece(accPair, capturedPiece, !status.IsWhite, to);
+    accumulatorSubAddCapture(accPair, 2, status.IsWhite, capturedPiece, !status.IsWhite, from, to, false);
     CREATE_SEARCH_INFO(-1, 0, 1);
     int val;
     if constexpr (quite) {
@@ -1033,9 +1011,7 @@ constexpr inline int bishopCapture(const Board &brd, move_info_t& info) noexcept
     } else {
         val = searchFunc<status.normal()>(newBoard, searchInfo);
     }
-    accumulatorSubPiece(accPair, 2, status.IsWhite, to);
-    accumulatorAddPiece(accPair, 2, status.IsWhite, from);
-    accumulatorAddPiece(accPair, capturedPiece, !status.IsWhite, to);
+    accumulatorSubAddCapture(accPair, 2, status.IsWhite, capturedPiece, !status.IsWhite, to, from, true);
     return val;
 }
 
@@ -1047,9 +1023,7 @@ constexpr inline int rookMove(const Board &brd, move_info_t& info) noexcept {
 
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 3, from, to);
     newKey = toggle_side_to_move(newKey);
-
-    accumulatorAddPiece(accPair, 3, status.IsWhite, to);
-    accumulatorSubPiece(accPair, 3, status.IsWhite, from);
+    accumulatorSubAddPiece(accPair, 3, status.IsWhite, from, to);
     CREATE_SEARCH_INFO(-1, 0, 0);
     int val = -2000000;
     if constexpr (status.IsWhite) {
@@ -1086,8 +1060,7 @@ constexpr inline int rookMove(const Board &brd, move_info_t& info) noexcept {
         val = searchFunc<status.normal()>(
                 newBoard, searchInfo);
     }
-    accumulatorSubPiece(accPair, 3, status.IsWhite, to);
-    accumulatorAddPiece(accPair, 3, status.IsWhite, from);
+    accumulatorSubAddPiece(accPair, 3, status.IsWhite, to, from);
     return val;
 }
 
@@ -1102,9 +1075,7 @@ constexpr inline int rookCapture(const Board &brd, move_info_t& info) noexcept {
         key, 3, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    accumulatorAddPiece(accPair, 3, status.IsWhite, to);
-    accumulatorSubPiece(accPair, 3, status.IsWhite, from);
-    accumulatorSubPiece(accPair, capturedPiece, !status.IsWhite, to);
+    accumulatorSubAddCapture(accPair, 3, status.IsWhite, capturedPiece, !status.IsWhite, from, to, false);
     int val = -2000000;
     CREATE_SEARCH_INFO(-1, 0, 1);
     if constexpr (status.IsWhite) {
@@ -1161,9 +1132,7 @@ constexpr inline int rookCapture(const Board &brd, move_info_t& info) noexcept {
             val = searchFunc<status.normal()>(newBoard, searchInfo);
         }
     }
-    accumulatorSubPiece(accPair, 3, status.IsWhite, to);
-    accumulatorAddPiece(accPair, 3, status.IsWhite, from);
-    accumulatorAddPiece(accPair, capturedPiece, !status.IsWhite, to);
+    accumulatorSubAddCapture(accPair, 3, status.IsWhite, capturedPiece, !status.IsWhite, to, from, true);
     return val;
 }
 
@@ -1176,12 +1145,10 @@ constexpr inline int queenMove(const Board &brd, move_info_t& info) noexcept {
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 4, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    accumulatorAddPiece(accPair, 4, status.IsWhite, to);
-    accumulatorSubPiece(accPair, 4, status.IsWhite, from);
+    accumulatorSubAddPiece(accPair, 4, status.IsWhite, from, to);
     CREATE_SEARCH_INFO(-1, irreversibleCount + 1, 0);
     int val = searchFunc<status.normal()>(newBoard, searchInfo);
-    accumulatorSubPiece(accPair, 4, status.IsWhite, to);
-    accumulatorAddPiece(accPair, 4, status.IsWhite, from);
+    accumulatorSubAddPiece(accPair, 4, status.IsWhite, to, from);
     return val;
 }
 
@@ -1197,9 +1164,7 @@ constexpr inline int queenCapture(const Board &brd, move_info_t& info) noexcept 
         key, 4, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    accumulatorAddPiece(accPair, 4, status.IsWhite, to);
-    accumulatorSubPiece(accPair, 4, status.IsWhite, from);
-    accumulatorSubPiece(accPair, capturedPiece, !status.IsWhite, to);
+    accumulatorSubAddCapture(accPair, 4, status.IsWhite, capturedPiece, !status.IsWhite, from, to, false);
     CREATE_SEARCH_INFO(-1, 0, 1);
     int val;
     if constexpr (quite) {
@@ -1207,9 +1172,7 @@ constexpr inline int queenCapture(const Board &brd, move_info_t& info) noexcept 
     } else {
         val = searchFunc<status.normal()>(newBoard, searchInfo);
     }
-    accumulatorSubPiece(accPair, 4, status.IsWhite, to);
-    accumulatorAddPiece(accPair, 4, status.IsWhite, from);
-    accumulatorAddPiece(accPair, capturedPiece, !status.IsWhite, to);
+    accumulatorSubAddCapture(accPair, 4, status.IsWhite, capturedPiece, !status.IsWhite, to, from, true);
     return val;
 }
 
@@ -1222,12 +1185,10 @@ constexpr inline int kingMove(const Board &brd, move_info_t& info) noexcept {
     uint64_t newKey = update_hash_move<status.IsWhite>(key, 5, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    accumulatorAddPiece(accPair, 5, status.IsWhite, to);
-    accumulatorSubPiece(accPair, 5, status.IsWhite, from);
+    accumulatorSubAddPiece(accPair, 5, status.IsWhite, from, to);
     CREATE_SEARCH_INFO(-1, irreversibleCount + 1, 0);
     int val = searchFunc<status.king()>(newBoard, searchInfo);
-    accumulatorSubPiece(accPair, 5, status.IsWhite, to);
-    accumulatorAddPiece(accPair, 5, status.IsWhite, from);
+    accumulatorSubAddPiece(accPair, 5, status.IsWhite, to, from);
     return val;
 }
 
@@ -1243,9 +1204,7 @@ constexpr inline int kingCapture(const Board &brd, move_info_t& info) noexcept {
         key, 5, capturedPiece, from, to);
     newKey = toggle_side_to_move(newKey);
 
-    accumulatorAddPiece(accPair, 5, status.IsWhite, to);
-    accumulatorSubPiece(accPair, 5, status.IsWhite, from);
-    accumulatorSubPiece(accPair, capturedPiece, !status.IsWhite, to);
+    accumulatorSubAddCapture(accPair, 5, status.IsWhite, capturedPiece, !status.IsWhite, from, to, false);
     CREATE_SEARCH_INFO(-1, 0, 1);
     int val;
     if constexpr (quite) {
@@ -1253,9 +1212,7 @@ constexpr inline int kingCapture(const Board &brd, move_info_t& info) noexcept {
     } else {
         val = searchFunc<status.king()>(newBoard, searchInfo);
     }
-    accumulatorSubPiece(accPair, 5, status.IsWhite, to);
-    accumulatorAddPiece(accPair, 5, status.IsWhite, from);
-    accumulatorAddPiece(accPair, capturedPiece, !status.IsWhite, to);
+    accumulatorSubAddCapture(accPair, 5, status.IsWhite, capturedPiece, !status.IsWhite, to, from, true);
     return val;
 }
 

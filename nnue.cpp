@@ -79,6 +79,36 @@ void accumulatorSubPiece(AccumulatorPair* pair, int piece_type, int piece_color,
     }
 }
 
+void accumulatorSubAddPiece(AccumulatorPair* pair, int piece_type, int piece_color, int from, int to) {
+    int wi_rem = calculate_idx(piece_type, piece_color, from, 1);
+    int bi_rem = calculate_idx(piece_type, piece_color, from, 0);
+    int wi_add = calculate_idx(piece_type, piece_color, to, 1);
+    int bi_add = calculate_idx(piece_type, piece_color, to, 0);
+
+    for (int i = 0; i < HL_SIZE; i++) {
+        pair->white.values[i] += FEATURE_WEIGHTS[wi_add][i] - FEATURE_WEIGHTS[wi_rem][i];
+        pair->black.values[i] += FEATURE_WEIGHTS[bi_add][i] - FEATURE_WEIGHTS[bi_rem][i];
+    }
+}
+void accumulatorSubAddCapture(AccumulatorPair* pair, int piece_type, int piece_color, int cap_type, int cap_color, int from, int to, bool undo) {
+    int wi_rem = calculate_idx(piece_type, piece_color, from, 1);
+    int bi_rem = calculate_idx(piece_type, piece_color, from, 0);
+    int wi_add = calculate_idx(piece_type, piece_color, to, 1);
+    int bi_add = calculate_idx(piece_type, piece_color, to, 0);
+    int wi_cap = calculate_idx(cap_type, cap_color, undo ? from : to, 1);
+    int bi_cap = calculate_idx(cap_type, cap_color, undo ? from : to, 0);
+    int cap_sign = undo ? 1 : -1;
+
+    for (int i = 0; i < HL_SIZE; i++) {
+        pair->white.values[i] += FEATURE_WEIGHTS[wi_add][i] 
+                                - FEATURE_WEIGHTS[wi_rem][i] 
+                                + cap_sign * FEATURE_WEIGHTS[wi_cap][i];
+        pair->black.values[i] += FEATURE_WEIGHTS[bi_add][i] 
+                                - FEATURE_WEIGHTS[bi_rem][i] 
+                                + cap_sign * FEATURE_WEIGHTS[bi_cap][i];
+    }
+}
+
 /*
 
 void accumulatorAddPiece(AccumulatorPair* pair, int piece_type, int piece_color, int square) {
