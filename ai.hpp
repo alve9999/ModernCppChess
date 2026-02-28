@@ -459,19 +459,21 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
             bool doFullSearch = true;
             int reduction = 0;
 
-            double reductionFactor = 0.0;
-            if(improving) {
-                reductionFactor = 0.0;
-            } else {
-                reductionFactor = -0.0;
-            }
 
             if (!isPVNode && !ml[i].capture && !inCheck && !ml[i].promotion &&
                 depth >= 3 && i > 1) {
-                int baseRed = 1.35 + int(std::log(depth) * std::log(i) / (2.75 + reductionFactor));
+                int baseRed = 1.35 + int(std::log(depth) * std::log(i) / (2.75));
+                if(!improving) {
+                    baseRed+=1;
+                }
+                baseRed -= historyTable[status.IsWhite][ml[i].from][ml[i].to] / 5000;
                 reduction = std::clamp(baseRed, 1, depth - 1);
             } else if (!isPVNode && !inCheck && depth >= 3 && i > 1) {
-                int baseRed = 0.2 + int(std::log(depth) * std::log(i) / (3.35 + reductionFactor));
+                int baseRed = 0.2 + int(std::log(depth) * std::log(i) / (3.35));
+                if(!improving) {
+                    baseRed+=1;
+                }
+                baseRed -= captureHistory[status.IsWhite][ml[i].from][ml[i].to] / 5000;
                 reduction = std::clamp(baseRed, 1, depth - 1);
             }
 

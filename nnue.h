@@ -1,7 +1,7 @@
 #pragma once
 #define HL_SIZE 512
 
-struct Accumulator {
+struct alignas(64) Accumulator {
     int16_t values[HL_SIZE];
 };
 
