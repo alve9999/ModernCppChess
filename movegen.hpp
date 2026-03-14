@@ -33,7 +33,7 @@ inline void moveHandle(const Board &brd, const MakeMoveFunc &move, Callback *ml,
     cb.makeMove = move;
     cb.from = from;
     cb.to = to;
-    cb.value = SEE(brd, from, to)*100;
+    cb.value = SEE(brd, from, to,0)*100;
 }
 
 template <class BoardState status>

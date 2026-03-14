@@ -350,6 +350,10 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
                 return val.value;
             }
         }
+        bool ttHit = false;
+        if(fromHash != 255 && toHash != 255) {
+            ttHit = true;
+        }
 
         bool hasSufficientMaterial = true;
         if (status.IsWhite) {
@@ -360,10 +364,11 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
                 (brd.BQueen | brd.BRook | brd.BBishop | brd.BKnight) != 0;
         }
 
-        // bool inWindow = (alpha == (beta - 1));
-        if (depth >= 4 && !inCheck && !isPVNode && !isCapture &&
+        bool prevMoveIsNull = info.prevMove != nullptr && info.prevMove->nullMove;
+
+        if (!ttHit && depth > 2 && !inCheck && !isPVNode && !isCapture && !nullMove && !prevMoveIsNull &&
             hasSufficientMaterial) {
-            int R = 3 + depth / 4 + std::min(((-score) - beta) / 200, 3);
+            int R = 4 + depth / 6 + std::min(((-score) - beta) / 200, 3);
             R = std::clamp(R, 2, depth - 1);
             constexpr BoardState NextState =
                 BoardState(!status.IsWhite, false, status.WLC, status.WRC,
@@ -460,21 +465,17 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
             int reduction = 0;
 
 
-            if (!isPVNode && !ml[i].capture && !inCheck && !ml[i].promotion &&
+            if (!ml[i].capture && !ml[i].promotion &&
                 depth >= 3 && i > 1) {
-                int baseRed = 1.35 + int(std::log(depth) * std::log(i) / (2.75));
-                if(!improving) {
-                    baseRed+=1;
-                }
-                baseRed -= historyTable[status.IsWhite][ml[i].from][ml[i].to] / 5000;
-                reduction = std::clamp(baseRed, 1, depth - 1);
-            } else if (!isPVNode && !inCheck && depth >= 3 && i > 1) {
-                int baseRed = 0.2 + int(std::log(depth) * std::log(i) / (3.35));
-                if(!improving) {
-                    baseRed+=1;
-                }
-                baseRed -= captureHistory[status.IsWhite][ml[i].from][ml[i].to] / 5000;
-                reduction = std::clamp(baseRed, 1, depth - 1);
+                float baseRed = 0.75 + int(std::log(depth) * std::log(i) / (2.25));
+                int hist = historyTable[status.IsWhite][ml[i].from][ml[i].to];
+
+                baseRed += !isPVNode + !improving;
+
+                baseRed += (inCheck && (((brd.WKing >> ml[i].from) & 1) || ((brd.BKing >> ml[i].from) & 1)));
+                    
+                baseRed += std::max(-2.0, std::min(2.0, hist / 5000.0));
+                reduction = std::clamp((int)baseRed, 1, depth - 1);
             }
 
             if (reduction > 0) {

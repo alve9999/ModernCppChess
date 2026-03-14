@@ -85,10 +85,12 @@ inline int getLeastValuableAttacker(const Board& brd, int square, bool isWhite, 
 }
 
 
-inline void updateAttackers(uint64_t& attackers,const Board& brd, uint64_t& occ, int fromSquare, int toSquare, int piece) noexcept {
-    attackers &= ~(1ULL << fromSquare);
-    occ &= ~(1ULL << fromSquare);
-    
+inline void updateAttackers(uint64_t& attackers, const Board& brd, uint64_t& occ, int fromSquare, int toSquare, int piece) noexcept {
+    // fromSquare has already been cleared from occ before this call;
+    // reveal any x-ray pieces that were hiding behind fromSquare by
+    // re-scanning rook/bishop rays from toSquare through the updated occ.
+    (void)toSquare; // rays are cast from toSquare but reveal pieces behind fromSquare
+
     if (piece == 3 || piece == 4 || piece == 5 || piece == 0) {
         uint64_t rookAttacks = getRmagic(toSquare, occ);
         attackers |= rookAttacks & (brd.WRook | brd.BRook | 
@@ -101,6 +103,7 @@ inline void updateAttackers(uint64_t& attackers,const Board& brd, uint64_t& occ,
                                      brd.WQueen | brd.BQueen) & occ;
     }
 }
+
 inline int getMovingPieceType(const Board& brd, int sq) noexcept {
     uint64_t fromBit = 1ULL << sq;
     
@@ -128,69 +131,63 @@ constexpr int seePieceValues[6] = {
     100, 320, 330, 500, 900, 20000
 };
 
-int SEE(const Board& brd, int from, int to) noexcept {
+// Returns SEE score minus threshold. Positive means the capture wins material
+// relative to threshold (e.g. threshold=0 means any winning/equal capture).
+int SEE(const Board& brd, int from, int to, int threshold = 0) noexcept {
     int movingPieceType = getMovingPieceType(brd, from);
     if (movingPieceType == -1) return 0;
     
     bool isWhiteMoving = brd.White & (1ULL << from);
     int capturedPieceType = getMovingPieceType(brd, to);
     
-
-    
     uint64_t occ = brd.Occ;
     uint64_t attackers = getAttackers(brd, to);
-    
-    attackers &= ~(1ULL << from);
-    
+
     int seeValues[32];
     int depth = 0;
-    if (movingPieceType == 0 && (to<=7 || to>=56)) {
-        seeValues[0] = seePieceValues[4] - seePieceValues[0];
-        movingPieceType = 4;
+
+    // Promotion: pawn becomes a queen on the target square.
+    // Gain = queen value + whatever was captured there.
+    if (movingPieceType == 0 && (to <= 7 || to >= 56)) {
+        seeValues[0] = seePieceValues[4] + (capturedPieceType != -1 ? seePieceValues[capturedPieceType] : 0);
+        movingPieceType = 4; // the piece on the square is now a queen
     }
-    else if(capturedPieceType==-1){
+    else if (capturedPieceType == -1) {
         seeValues[0] = 0;
     }
-    else{
+    else {
         seeValues[0] = seePieceValues[capturedPieceType];
     }
-    occ &= ~(1ULL << from);
+
+    // Remove the moving piece from occ/attackers, then reveal x-rays behind it.
+    occ      &= ~(1ULL << from);
     attackers &= ~(1ULL << from);
-    
     updateAttackers(attackers, brd, occ, from, to, movingPieceType);
     
     int lastPieceType = movingPieceType;
     bool side = !isWhiteMoving;
+
     while (attackers) {
         int nextPieceType = -1;
         int nextAttackerSquare = getLeastValuableAttacker(brd, to, side, attackers, nextPieceType);
-        if (nextAttackerSquare == -1) {
-            break;
-        }
+        if (nextAttackerSquare == -1) break;
         
         depth++;
-
-        int gain = 0;
-        if (depth == 1 && capturedPieceType == -1) {
-            gain = seePieceValues[lastPieceType];
-        }
-        else {
-            gain = seePieceValues[lastPieceType] - seeValues[depth - 1];
-        }
-
-        seeValues[depth] = gain;
+        // Standing pat: this side captures lastPieceType and risks nextPieceType.
+        seeValues[depth] = seePieceValues[lastPieceType] - seeValues[depth - 1];
         lastPieceType = nextPieceType;
         
-        occ &= ~(1ULL << nextAttackerSquare);
+        occ      &= ~(1ULL << nextAttackerSquare);
         attackers &= ~(1ULL << nextAttackerSquare);
-        
         updateAttackers(attackers, brd, occ, nextAttackerSquare, to, nextPieceType);
         
         side = !side;
     }
+
+    // Negamax rollback: each side can choose not to capture (stand pat).
     for (int i = depth; i > 0; i--) {
         seeValues[i-1] = -std::max(-seeValues[i-1], seeValues[i]);
     }
 
-    return seeValues[0];
+    return seeValues[0] - threshold;
 }
