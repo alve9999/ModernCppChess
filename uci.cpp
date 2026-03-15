@@ -164,7 +164,7 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
 
         Callback ml =
             iterative_deepening(*brd, ep, whiteTurn, enPassant, whiteLeft,
-                                whiteRight, blackLeft, blackRight, think,irreversibleCount,stats);
+                                whiteRight, blackLeft, blackRight, think,irreversibleCount,stats,99);
 
         std::cout << "bestmove " << convertMoveToUCI(*brd, ml.from, ml.to)
                   << std::endl;
@@ -197,7 +197,7 @@ void runBench(){
     SearchStats stats{0,0,false};
 
     Callback ml = iterative_deepening(*brd, -1, 1, 0, 1,
-                                1, 1, 1, 5.0,0,stats);
+                                1, 1, 1, 5.0,0,stats, 12);
     printf("%ld nodes %ld nps\n", stats.nodes, stats.nps);
 }
 

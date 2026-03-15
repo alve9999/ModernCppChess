@@ -807,7 +807,7 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
 
 inline Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP,
                              bool WL, bool WR, bool BL, bool BR,
-                             double timeLimit, int irreversibleCount, SearchStats &stats) {
+                             double timeLimit, int irreversibleCount, SearchStats &stats, int max_depth) {
     TT.age++;
     resetKillerMoves();
     using clock = std::chrono::high_resolution_clock;
@@ -830,7 +830,7 @@ inline Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP,
     int bestFrom = 255;
     int bestTo = 255;
 
-    for (int depth = 1; depth <= 99; depth += 1) {
+    for (int depth = 1; depth <= max_depth; depth += 1) {
         // clearHistoryTable();
         ageHistoryTable();
         if (shouldStop.load()) {
