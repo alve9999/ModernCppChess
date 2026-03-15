@@ -124,7 +124,9 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
     } else if (tokens[0] == "isready") {
         std::cout << "readyok" << std::endl;
     } else if (tokens[0] == "uci") {
-        std::cout << "id name chess_engien\nid author Alve Lindell\nuciok" << std::endl;
+        std::cout << "id name chess_engien\nid author Alve Lindell\n";
+        printUCIOptions();
+        std::cout << "uciok" << std::endl;
     } else if (tokens[0] == "go") {
         auto start = std::chrono::high_resolution_clock::now();
         int whiteTime = 100000000;

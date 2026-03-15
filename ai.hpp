@@ -280,7 +280,7 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
                                   : (brd.BKing & kingBan) != 0;
 
     // maybe (!isCapture)
-    if ((!isPVNode) && (!inCheck) && (depth >= 1) && (depth <= 4)) {
+    if ((!isPVNode) && (!inCheck) && (depth >= 1) && (depth <= RFP_DEPTH)) {
         int staticEval = -score;
         int margin = RFP_MARGIN * depth /(improving ? 2 : 1);
 
@@ -342,7 +342,7 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
 
         uint8_t fromHash = 255;
         uint8_t toHash = 255;
-        if (depth > 1) {
+        if (depth > TT_PROBE_MIN_DEPTH) {
             res val = TT.probe_hash(depth, alpha, beta, key);
             fromHash = val.from;
             toHash = val.to;
@@ -370,7 +370,7 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
 
         if (!ttHit && depth > 2 && !inCheck && !isPVNode && !isCapture && !nullMove && !prevMoveIsNull &&
             hasSufficientMaterial) {
-            int R = 4 + depth / 6 + std::min(((-score) - beta) / 200, 3);
+            int R = NMP_BASE + depth / NMP_DEPTH_DIV + std::min(((-score) - beta) / NMP_SCORE_DIV, NMP_SCORE_MAX);
             R = std::clamp(R, 2, depth - 1);
             constexpr BoardState NextState =
                 BoardState(!status.IsWhite, false, status.WLC, status.WRC,
@@ -408,11 +408,11 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
 
         for (int i = 0; i < count; i++) {
             if (ml[i].from == fromHash && ml[i].to == toHash) {
-                ml[i].value += 10000000;
+                ml[i].value += TT_MOVE_BONUS;
             }
             if (ml[i].from == expectedPvMove.from &&
                 ml[i].to == expectedPvMove.to) {
-                ml[i].value += 20000000;
+                ml[i].value += PV_MOVE_BONUS;
             }
             if (!ml[i].capture && !ml[i].promotion) {
                 ml[i].value += getKillerMoveBonus(ml[i].from, ml[i].to, ply);
@@ -443,8 +443,8 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
         bool futilityPruning = false;
         int futilityMargin = 0;
         
-        if (depth <= 2 && !isPVNode && !inCheck && alpha > -90000 && alpha < 90000) {
-            futilityMargin = depth == 1 ? (FP_BASE) : (FP_BASE + FP_ADD);
+        if (depth <= FP_DEPTH && !isPVNode && !inCheck && alpha > -90000 && alpha < 90000) {
+            futilityMargin = depth == 1 ? (FP_BASE) : (FP_BASE + FP_ADD * (depth - 1));
             
             if (-score + futilityMargin <= alpha) {
                 futilityPruning = true;
@@ -468,8 +468,8 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
             }
 
             if (!ml[i].capture && !ml[i].promotion) {
-                if (0&&depth <= 8) {
-                    int lmpLimit = LMP_TABLE[improving ? 1 : 0][depth];
+                if (depth <= LMP_DEPTH_MAX) {
+                    int lmpLimit = LMP_TABLE[improving ? 1 : 0][depth] * LMP_SCALE / 100;
                     if (quietCount >= lmpLimit) {
                         continue;
                     }
@@ -483,15 +483,15 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
 
 
             if (!ml[i].capture && !ml[i].promotion &&
-                depth >= 3 && quietCount > 1) {
-                float baseRed = 0.75 + int(std::log(depth) * std::log(quietCount) / (2.25));
+                depth >= LMR_DEPTH_MIN && quietCount > 1) {
+                float baseRed = LMR_BASE + int(std::log(depth) * std::log(quietCount) / (LMR_DIV));
                 int hist = historyTable[status.IsWhite][ml[i].from][ml[i].to];
 
                 baseRed += !isPVNode + !improving;
 
                 baseRed += (inCheck && (((brd.WKing >> ml[i].from) & 1) || ((brd.BKing >> ml[i].from) & 1)));
                     
-                baseRed += std::max(-2.0, std::min(2.0, -hist / 5000.0));
+                baseRed += std::max(-LMR_HIST_MAX, std::min(LMR_HIST_MAX, -hist / LMR_HIST_DIV));
                 reduction = std::clamp((int)baseRed, 1, depth - 1);
             }
 
@@ -587,7 +587,7 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
                                                        -depth);
                     }
                 }
-                if (depth > 1) {
+                if (depth > TT_PROBE_MIN_DEPTH) {
                     TT.store(depth, beta, 2, key, ml[i].from, ml[i].to);
                 }
                 prevHash.pop_back();
@@ -648,10 +648,10 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
     for (int i = 0; i < count; i++) {
         if (ml[i].from == expectedRootPvMove.from &&
             ml[i].to == expectedRootPvMove.to) {
-            ml[i].value += 2000000;
+            ml[i].value += PV_MOVE_BONUS;
         }
         if (ml[i].from == fromHash && ml[i].to == toHash) {
-            ml[i].value += 1000000;
+            ml[i].value += TT_MOVE_BONUS;
         }
     }
 
