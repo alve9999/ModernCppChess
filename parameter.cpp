@@ -63,10 +63,10 @@ void setValueFromCommand(const std::string& command) {
     else if (name == "LMR_DIV")            LMR_DIV = static_cast<int>(value);
     else if (name == "LMR_HIST_MAX")       LMR_HIST_MAX = static_cast<int>(value);
     else if (name == "LMR_HIST_DIV")       LMR_HIST_DIV = static_cast<int>(value);
-    else std::cerr << "Unknown parameter: " << name << "\n";
+    //else std::cerr << "Unknown parameter: " << name << "\n";
 }
 void printUCIOptions() {
-    std::cout << "option name Hash type spin default " << 1 << " min 1 max 1\n";
+    std::cout << "option name Hash type spin default " << 8 << " min 8 max 8\n";
     std::cout << "option name Threads type spin default " << 1 << " min 1 max 1\n";
     std::cout << "option name KILLER_MOVE_BONUS type spin default " << KILLER_MOVE_BONUS << " min 0 max 1000000\n";
     std::cout << "option name COUNTER_HISTORY_BONUS type spin default " << COUNTER_HISTORY_BONUS << " min 0 max 1000000\n";
