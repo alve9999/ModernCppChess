@@ -3,3 +3,4 @@
 extern bool white;
 extern std::vector<uint64_t> prevHash;
 void uciRunGame();
+void runBench();

@@ -31,7 +31,11 @@ struct MovePV {
     uint8_t from = 255;
     uint8_t to = 255;
 };
-
+struct SearchStats {
+    uint64_t nodes;
+    uint64_t nps;
+    bool print;
+};
 inline MovePV pvTable[MAX_SEARCH_DEPTH + 1][MAX_SEARCH_DEPTH + 1];
 inline int pvLength[MAX_SEARCH_DEPTH + 1];
 inline MovePV previousPvLine[MAX_SEARCH_DEPTH + 1];
@@ -172,24 +176,20 @@ inline int quiescence(const Board &brd, minimax_info_t &info) noexcept {
     bool isCapture = info.isCapture;
 
     node_count++;
-
+    uint64_t kingBan = 0;
+    generateKingBan<status.IsWhite>(brd, kingBan);
+    bool inCheck = status.IsWhite ? (brd.WKing & kingBan) != 0
+                                  : (brd.BKing & kingBan) != 0;
 
     int standPat = -score;
-    if (standPat >= beta) {
-        return beta;
-    }
-    if (alpha < standPat) {
-        alpha = standPat;
-    }
-
-    if (qdepth == 0) {
-        return standPat;
-    }
+    if (standPat >= beta) return beta;
+    if (standPat > alpha) alpha = standPat;
 
 
 
     Callback ml[217];
     int count = 0;
+
     genMoves<status, 1, 1>(brd, ep, ml, count);
     for(int i = 0; i < count; i++) {
         ml[i].value += captureHistory[status.IsWhite][ml[i].from][ml[i].to];
@@ -210,10 +210,12 @@ inline int quiescence(const Board &brd, minimax_info_t &info) noexcept {
         moveInfo.score = -score;
         moveInfo.accPair = info.accPair;
         moveInfo.key = key;
-        moveInfo.depth = qdepth - 1;
+        moveInfo.depth = 1;
         moveInfo.irreversibleCount = irreversibleCount;
         moveInfo.ply = ply;
         moveInfo.isPVNode = false;
+        moveInfo.prevMove = &info;
+
         int eval = -ml[i].move(brd, moveInfo);
         if (eval >= beta) {
             return beta;
@@ -453,28 +455,43 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
         bool firstMove = true;
 
 	    int extension = calculateExtension(isCapture,inCheck,isPVNode,count==1);
+        static const int LMP_TABLE[2][9] = {
+            {0, 3,  7, 12, 18, 25, 35, 48, 64},  // not improving
+            {0, 6, 12, 20, 30, 42, 56, 72, 90}
+        };
 
+        int quietCount = 0;
         for (int i = 0; i < count; i++) {
 
             if (futilityPruning && i > 0 && !ml[i].capture && !ml[i].promotion && !inCheck) {
                 continue;
             }
-            int eval;
 
+            if (!ml[i].capture && !ml[i].promotion) {
+                if (0&&depth <= 8) {
+                    int lmpLimit = LMP_TABLE[improving ? 1 : 0][depth];
+                    if (quietCount >= lmpLimit) {
+                        continue;
+                    }
+                }
+                quietCount++;
+            }
+
+            int eval;
             bool doFullSearch = true;
             int reduction = 0;
 
 
             if (!ml[i].capture && !ml[i].promotion &&
-                depth >= 3 && i > 1) {
-                float baseRed = 0.75 + int(std::log(depth) * std::log(i) / (2.25));
+                depth >= 3 && quietCount > 1) {
+                float baseRed = 0.75 + int(std::log(depth) * std::log(quietCount) / (2.25));
                 int hist = historyTable[status.IsWhite][ml[i].from][ml[i].to];
 
                 baseRed += !isPVNode + !improving;
 
                 baseRed += (inCheck && (((brd.WKing >> ml[i].from) & 1) || ((brd.BKing >> ml[i].from) & 1)));
                     
-                baseRed += std::max(-2.0, std::min(2.0, hist / 5000.0));
+                baseRed += std::max(-2.0, std::min(2.0, -hist / 5000.0));
                 reduction = std::clamp((int)baseRed, 1, depth - 1);
             }
 
@@ -595,7 +612,7 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
 inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
                              bool WL, bool WR, bool BL, bool BR, int depth,
                              int irreversibleCount, int &previousEval,
-                             int &bestFrom, int &bestTo) {
+                             int &bestFrom, int &bestTo, SearchStats &stats) {
     node_count = 0;
     auto start = std::chrono::high_resolution_clock::now();
     Callback ml[217];
@@ -762,13 +779,17 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
     int nps = ((double)node_count) / duration.count();
     if (!shouldStop.load()) {
         TT.store(depth, bestEval, 0, key, bestFrom, bestTo);
-        printf("info depth %d score cp %d nodes %ld nps %d time %d", depth,
-               bestEval, node_count, nps, (int)(1000 * duration.count()));
+        if(stats.print) {
+            printf("info depth %d score cp %d nodes %ld nps %d time %d", depth,
+                bestEval, node_count, nps, (int)(1000 * duration.count()));
+            printf("\n");
+        }
+        stats.nodes = node_count;
+        stats.nps = nps;
         // for(int i = 0; i < pvLength[0]; i++) {
         //     printf("%s ", convertMoveToUCI(brd, pvTable[0][i].from,
         //     pvTable[0][i].to).c_str());
         // }
-        printf("\n");
     }
     count = 0;
 
@@ -786,7 +807,7 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
 
 inline Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP,
                              bool WL, bool WR, bool BL, bool BR,
-                             double timeLimit, int irreversibleCount) {
+                             double timeLimit, int irreversibleCount, SearchStats &stats) {
     TT.age++;
     resetKillerMoves();
     using clock = std::chrono::high_resolution_clock;
@@ -816,7 +837,7 @@ inline Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP,
             break;
         }
         bestMove = findBestMove(brd, ep, WH, EP, WL, WR, BL, BR, depth,
-                                irreversibleCount, eval, bestFrom, bestTo);
+                                irreversibleCount, eval, bestFrom, bestTo, stats);
         if (0 <= MAX_SEARCH_DEPTH && pvLength[0] > 0) {
             previousPvLineLength = pvLength[0];
             memcpy(previousPvLine, &pvTable[0][0],

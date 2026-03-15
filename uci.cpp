@@ -160,10 +160,11 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
         bool whiteRight = state->WRC;
         bool blackLeft = state->BLC;
         bool blackRight = state->BRC;
+        SearchStats stats{0,0,true};
 
         Callback ml =
             iterative_deepening(*brd, ep, whiteTurn, enPassant, whiteLeft,
-                                whiteRight, blackLeft, blackRight, think,irreversibleCount);
+                                whiteRight, blackLeft, blackRight, think,irreversibleCount,stats);
 
         std::cout << "bestmove " << convertMoveToUCI(*brd, ml.from, ml.to)
                   << std::endl;
@@ -181,6 +182,24 @@ void proccessCommand(std::string str, std::unique_ptr<Board> &brd,
 }
 
 #include <fstream>
+
+void runBench(){
+    auto brd = std::make_unique<Board>(loadFenBoard(
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 "));
+    auto state = std::make_unique<BoardState>(parseBoardState(
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 "));
+            bool whiteTurn = state->IsWhite;
+    bool enPassant = state->EP;
+    bool whiteLeft = state->WLC;
+    bool whiteRight = state->WRC;
+    bool blackLeft = state->BLC;
+    bool blackRight = state->BRC;
+    SearchStats stats{0,0,false};
+
+    Callback ml = iterative_deepening(*brd, -1, 1, 0, 1,
+                                1, 1, 1, 5.0,0,stats);
+    printf("%ld nodes %ld nps\n", stats.nodes, stats.nps);
+}
 
 void uciRunGame() {
 
