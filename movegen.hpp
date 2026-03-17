@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <iostream>
 #include "SEE.hpp"
+#include "parameter.hpp"
 
 extern int historyTable[2][64][64];
 extern int captureHistoryTable[2][64][64];
@@ -33,7 +34,7 @@ inline void moveHandle(const Board &brd, const MakeMoveFunc &move, Callback *ml,
     cb.makeMove = move;
     cb.from = from;
     cb.to = to;
-    cb.value = SEE(brd, from, to,0)*100;
+    cb.value = SEE(brd, from, to,0)*SEE_MULTIPLIER;
 }
 
 template <class BoardState status>
@@ -59,10 +60,7 @@ _fast void moveHandle(const Board &brd, const SearchMoveFunc &move,
 }
 
 static int values[6] = {10000, 30000, 30000, 50000, 90000, 0};
-#define PROMOTE 80000
-#define CASTLE 5000
-#define EP_VAL 10000
-#define CAPTURE 70000
+
 
 template <bool IsWhite>
 constexpr inline int getVictimValue(const Board &brd, int to) noexcept {

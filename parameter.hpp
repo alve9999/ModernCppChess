@@ -5,6 +5,7 @@
 extern int COUNTER_HISTORY_BONUS;
 extern int FOLLOW_UP_BONUS;
 extern int KILLER_MOVE_BONUS;
+extern int SEE_MULTIPLIER;
 //extern int DELTA_MARGIN;
 //extern int DELTA_INIT;
 extern int RFP_MARGIN;
@@ -29,5 +30,9 @@ extern double LMR_BASE;
 extern double LMR_DIV;
 extern int LMR_HIST_MAX;
 extern int LMR_HIST_DIV;
+extern int PROMOTE ;
+extern int CASTLE ;
+extern int EP_VAL ;
+extern int CAPTURE ;
 void setValueFromCommand(const std::string& command);
 void printUCIOptions();
