@@ -1,15 +1,16 @@
 #include "parameter.hpp"
 
-int KILLER_MOVE_BONUS = 13000;
-int COUNTER_HISTORY_BONUS = 6500;
-int FOLLOW_UP_BONUS = 3000;
+int KILLER_MOVE_BONUS = 12066;
+int COUNTER_HISTORY_BONUS = 5587;
+int FOLLOW_UP_BONUS = 3504;
 //int DELTA_MARGIN = 800;
 //int DELTA_INIT = 200;
 int RFP_MARGIN = 55;
-int FP_BASE = 200;
-int FP_ADD = 100;
-int WINDOW_INIT = 15;
+int FP_BASE = 184;
+int FP_ADD = 103;
+int WINDOW_INIT = 11;
 int WINDOW_MULT = 2;
+int SEE_MULTIPLIER = 100;
 double HISTORY_AGE_FACTOR = 1.1;
 int RFP_DEPTH         = 4;
 int TT_PROBE_MIN_DEPTH = 1;
@@ -17,8 +18,8 @@ int NMP_BASE          = 3;
 int NMP_DEPTH_DIV     = 5;
 int NMP_SCORE_DIV     = 200;
 int NMP_SCORE_MAX     = 2;
-int TT_MOVE_BONUS     = 1000000;
-int PV_MOVE_BONUS     = 2000000;
+int TT_MOVE_BONUS     = 882205;
+int PV_MOVE_BONUS     = 2098169;
 int FP_DEPTH          = 2;
 int LMP_DEPTH_MAX     = 8;
 int LMP_SCALE         = 200;
@@ -27,6 +28,10 @@ double LMR_BASE       = 0.65;
 double LMR_DIV           = 2.47;
 int LMR_HIST_MAX      = 2;
 int LMR_HIST_DIV      = 5000;
+int PROMOTE = 80000;
+int CASTLE = 5000;
+int EP_VAL = 10000;
+int CAPTURE = 70000;
 
 void setValueFromCommand(const std::string& command) {
     std::istringstream iss(command);
@@ -40,6 +45,7 @@ void setValueFromCommand(const std::string& command) {
     else if (name == "COUNTER_HISTORY_BONUS") COUNTER_HISTORY_BONUS = static_cast<int>(value);
     //else if (name == "DELTA_MARGIN")          DELTA_MARGIN = static_cast<int>(value);
     //else if (name == "DELTA_INIT")            DELTA_INIT = static_cast<int>(value);
+    else if (name == "SEE_MULTIPLIER")          SEE_MULTIPLIER = static_cast<int>(value);
     else if (name == "RFP_MARGIN")             RFP_MARGIN = static_cast<int>(value);
     else if (name == "FP_BASE")               FP_BASE = static_cast<int>(value);
     else if (name == "FP_ADD")                FP_ADD = static_cast<int>(value);
@@ -63,6 +69,10 @@ void setValueFromCommand(const std::string& command) {
     else if (name == "LMR_DIV")            LMR_DIV = static_cast<int>(value);
     else if (name == "LMR_HIST_MAX")       LMR_HIST_MAX = static_cast<int>(value);
     else if (name == "LMR_HIST_DIV")       LMR_HIST_DIV = static_cast<int>(value);
+    else if (name == "PROMOTE")          PROMOTE = static_cast<int>(value);
+    else if (name == "CASTLE")            CASTLE = static_cast<int>(value);
+    else if (name == "EP_VAL")            EP_VAL = static_cast<int>(value);
+    else if (name == "CAPTURE")           CAPTURE = static_cast<int>(value);
     //else std::cerr << "Unknown parameter: " << name << "\n";
 }
 void printUCIOptions() {
@@ -70,6 +80,7 @@ void printUCIOptions() {
     std::cout << "option name Threads type spin default " << 1 << " min 1 max 1\n";
     std::cout << "option name KILLER_MOVE_BONUS type spin default " << KILLER_MOVE_BONUS << " min 0 max 1000000\n";
     std::cout << "option name COUNTER_HISTORY_BONUS type spin default " << COUNTER_HISTORY_BONUS << " min 0 max 1000000\n";
+    std::cout << "option name SEE_MULTIPLIER type spin default " << SEE_MULTIPLIER << " min 0 max 1000\n";
     std::cout << "option name FOLLOW_UP_BONUS type spin default " << FOLLOW_UP_BONUS << " min 0 max 1000000\n";
     //std::cout << "option name DELTA_MARGIN type spin default " << DELTA_MARGIN << " min 0 max 10000\n";
     //std::cout << "option name DELTA_INIT type spin default " << DELTA_INIT << " min 0 max 10000\n";
@@ -95,4 +106,8 @@ void printUCIOptions() {
     std::cout << "option name LMR_DIV type string default " << LMR_DIV << "\n";
     std::cout << "option name LMR_HIST_MAX type spin default " << LMR_HIST_MAX << " min 0 max 20\n";
     std::cout << "option name LMR_HIST_DIV type spin default " << LMR_HIST_DIV << " min 1 max 10000\n";
+    std::cout << "option name PROMOTE type spin default " << PROMOTE << " min 0 max 1000000\n";
+    std::cout << "option name CASTLE type spin default " << CASTLE << " min 0 max 1000000\n";
+    std::cout << "option name EP_VAL type spin default " << EP_VAL << " min 0 max 1000000\n";
+        std::cout << "option name CAPTURE type spin default " << CAPTURE << " min 0 max 1000000\n";
 }
