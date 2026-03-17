@@ -10,7 +10,6 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
-#include <omp.h>
 #include <thread>
 #include "SEE.hpp"
 #include "minimax_info.hpp"
