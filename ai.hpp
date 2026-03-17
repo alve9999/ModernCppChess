@@ -468,13 +468,13 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
             }
 
             if (!ml[i].capture && !ml[i].promotion) {
+                quietCount++;
                 if (depth <= LMP_DEPTH_MAX) {
                     int lmpLimit = LMP_TABLE[improving ? 1 : 0][depth] * LMP_SCALE / 100;
                     if (quietCount >= lmpLimit) {
                         continue;
                     }
                 }
-                quietCount++;
             }
 
             int eval;
