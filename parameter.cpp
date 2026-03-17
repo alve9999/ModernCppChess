@@ -1,14 +1,14 @@
 #include "parameter.hpp"
 
-int KILLER_MOVE_BONUS = 13000;
-int COUNTER_HISTORY_BONUS = 6500;
-int FOLLOW_UP_BONUS = 3000;
+int KILLER_MOVE_BONUS = 12066;
+int COUNTER_HISTORY_BONUS = 5587;
+int FOLLOW_UP_BONUS = 3504;
 //int DELTA_MARGIN = 800;
 //int DELTA_INIT = 200;
 int RFP_MARGIN = 55;
-int FP_BASE = 200;
-int FP_ADD = 100;
-int WINDOW_INIT = 15;
+int FP_BASE = 184;
+int FP_ADD = 103;
+int WINDOW_INIT = 11;
 int WINDOW_MULT = 2;
 double HISTORY_AGE_FACTOR = 1.1;
 int RFP_DEPTH         = 4;
@@ -17,8 +17,8 @@ int NMP_BASE          = 3;
 int NMP_DEPTH_DIV     = 5;
 int NMP_SCORE_DIV     = 200;
 int NMP_SCORE_MAX     = 2;
-int TT_MOVE_BONUS     = 1000000;
-int PV_MOVE_BONUS     = 2000000;
+int TT_MOVE_BONUS     = 882205;
+int PV_MOVE_BONUS     = 2098169;
 int FP_DEPTH          = 2;
 int LMP_DEPTH_MAX     = 8;
 int LMP_SCALE         = 200;
