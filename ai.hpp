@@ -729,27 +729,19 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
                 moveInfo.irreversibleCount = irreversibleCount;
                 moveInfo.ply               = 1;
                 moveInfo.prevMove          = nullptr;
- 
+
                 int eval;
-                if (firstMove) {
+                moveInfo.alpha    = firstMove ? -beta : -alpha - 1;
+                moveInfo.beta     = firstMove ? -alpha : -alpha;
+                moveInfo.isPVNode = firstMove;
+                eval = -ml[i].move(brd, moveInfo);
+
+                if (!firstMove && eval > alpha && eval < beta) {
                     moveInfo.alpha    = -beta;
                     moveInfo.beta     = -alpha;
                     moveInfo.isPVNode = true;
                     eval = -ml[i].move(brd, moveInfo);
-                } else {
-                    moveInfo.alpha    = -alpha - 1;
-                    moveInfo.beta     = -alpha;
-                    moveInfo.isPVNode = false;
-                    eval = -ml[i].move(brd, moveInfo);
- 
-                    if (eval > alpha && eval < beta) {
-                        moveInfo.alpha    = -beta;
-                        moveInfo.beta     = -alpha;
-                        moveInfo.isPVNode = true;
-                        eval = -ml[i].move(brd, moveInfo);
-                    }
                 }
- 
                 if (eval > bestEval) {
                     bestEval      = eval;
                     bestMoveIndex = i;
