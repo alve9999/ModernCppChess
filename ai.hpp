@@ -296,7 +296,7 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
         return beta;
     }
 
-    if (depth == 0 || (!isPVNode && (-score < (alpha - 507 - 312 * depth * depth)))) {
+    if (depth == 0) {
         minimax_info_t quiescenceInfo;
         quiescenceInfo.ep = ep;
         quiescenceInfo.alpha = alpha;
