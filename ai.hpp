@@ -620,6 +620,16 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
     if (0 <= MAX_SEARCH_DEPTH) {
         pvLength[0] = 0;
     }
+    
+    uint64_t kingBan = 0;
+    if(WH){
+        generateKingBan<1>(brd, kingBan);
+    }
+    else{
+        generateKingBan<0>(brd, kingBan);
+    }
+    bool inCheck = WH ? (brd.WKing & kingBan) != 0
+                                  : (brd.BKing & kingBan) != 0;
 
     AccumulatorPair* accPair = (AccumulatorPair*)malloc(sizeof(AccumulatorPair));
     nnue_init(accPair, brd);
@@ -652,6 +662,12 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
         if (ml[i].from == fromHash && ml[i].to == toHash) {
             ml[i].value += TT_MOVE_BONUS;
         }
+        if (!ml[i].capture && !ml[i].promotion) {
+            ml[i].value += getKillerMoveBonus(ml[i].from, ml[i].to, 1);
+        }
+        else{
+            ml[i].value += captureHistory[WH][ml[i].from][ml[i].to];
+        }
     }
 
     sortMoves(ml, count);
@@ -671,24 +687,79 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
             windowFailed = false;
             bestEval = -99999;
             bestMoveIndex = -1;
+            int quietCount = 0;
             for (int i = 0; i < count; i++) {
                 int eval;
+                bool doFullSearch = true;
+                int reduction = 0;
+                if (!ml[i].capture && !ml[i].promotion) {
+                    quietCount++;
+                }
 
-                move_info_t moveInfo;
-                moveInfo.from = ml[i].from;
-                moveInfo.to = ml[i].to;
-                moveInfo.alpha = -beta;
-                moveInfo.beta = -alpha;
-                moveInfo.score = score;
-                moveInfo.accPair = accPair;
-                moveInfo.key = key;
-                moveInfo.depth = depth - 1;
-                moveInfo.irreversibleCount = irreversibleCount;
-                moveInfo.ply = 1;
-                moveInfo.isPVNode = firstMove;
-                moveInfo.prevMove = nullptr;
+                if (!ml[i].capture && !ml[i].promotion &&
+                    depth >= LMR_DEPTH_MIN && quietCount > 1) {
+                    float baseRed = LMR_BASE + int(std::log(depth) * std::log(quietCount) / (LMR_DIV));
+                    int hist = historyTable[WH][ml[i].from][ml[i].to];
 
-                eval = -ml[i].move(brd, moveInfo);
+                    baseRed += !firstMove;
+
+                    baseRed += (inCheck && (((brd.WKing >> ml[i].from) & 1) || ((brd.BKing >> ml[i].from) & 1)));
+                        
+                    baseRed += std::max(-LMR_HIST_MAX, std::min(LMR_HIST_MAX, -hist / LMR_HIST_DIV));
+                    reduction = std::clamp((int)baseRed, 1, depth - 1);
+                }
+
+                if (reduction > 0) {
+                    doFullSearch = false;
+                    move_info_t moveInfo;
+                    moveInfo.from = ml[i].from;
+                    moveInfo.to = ml[i].to;
+                    moveInfo.alpha = -alpha - 1;
+                    moveInfo.beta = -alpha;
+                    moveInfo.score = score;
+                    moveInfo.accPair = accPair;
+                    moveInfo.key = key;
+                    moveInfo.depth = depth - reduction;
+                    moveInfo.irreversibleCount = irreversibleCount;
+                    moveInfo.ply = 1;
+                    moveInfo.isPVNode = false;
+                    moveInfo.prevMove = nullptr;
+                    eval = -ml[i].move(brd, moveInfo);
+                    if (eval > alpha) {
+                        doFullSearch = true;
+                    }
+                }
+
+                if (doFullSearch) {
+                    move_info_t moveInfo;
+                    moveInfo.from = ml[i].from;
+                    moveInfo.to = ml[i].to;
+                    moveInfo.alpha = -beta;
+                    moveInfo.beta = -alpha;
+                    moveInfo.score = score;
+                    moveInfo.accPair = accPair;
+                    moveInfo.key = key;
+                    moveInfo.depth = depth - 1;
+                    moveInfo.irreversibleCount = irreversibleCount;
+                    moveInfo.ply = 1;
+                    moveInfo.isPVNode = firstMove;
+                    moveInfo.prevMove = nullptr;
+
+                    if (firstMove) {
+                        eval = -ml[i].move(brd, moveInfo);
+                    } else {
+                        moveInfo.alpha = -alpha - 1;
+                        moveInfo.isPVNode = false;
+                        eval = -ml[i].move(brd, moveInfo);
+
+                        if (eval > alpha && eval < beta) {
+                            moveInfo.alpha = -beta;
+                            moveInfo.isPVNode = firstMove;
+                            eval = -ml[i].move(brd, moveInfo);
+                        }
+                    }
+                }
+
                 firstMove = false;
 
                 if (eval > bestEval) {
@@ -727,23 +798,77 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
         }
     }
     if (depth < 6) {
+        int quietCount = 0;
         for (int i = 0; i < count; i++) {
             int eval;
-            move_info_t moveInfo;
-            moveInfo.from = ml[i].from;
-            moveInfo.to = ml[i].to;
-            moveInfo.alpha = -beta;
-            moveInfo.beta = -alpha;
-            moveInfo.score = score;
-            moveInfo.accPair = accPair;
-            moveInfo.key = key;
-            moveInfo.depth = depth - 1;
-            moveInfo.irreversibleCount = irreversibleCount;
-            moveInfo.ply = 1;
-            moveInfo.isPVNode = firstMove;
-            moveInfo.prevMove = nullptr;
+            bool doFullSearch = true;
+            int reduction = 0;
+            if (!ml[i].capture && !ml[i].promotion) {
+                quietCount++;
+            }
 
-            eval = -ml[i].move(brd, moveInfo);
+            if (!ml[i].capture && !ml[i].promotion &&
+                depth >= LMR_DEPTH_MIN && quietCount > 1) {
+                float baseRed = LMR_BASE + int(std::log(depth) * std::log(quietCount) / (LMR_DIV));
+                int hist = historyTable[WH][ml[i].from][ml[i].to];
+
+                baseRed += !firstMove;
+
+                baseRed += (inCheck && (((brd.WKing >> ml[i].from) & 1) || ((brd.BKing >> ml[i].from) & 1)));
+                    
+                baseRed += std::max(-LMR_HIST_MAX, std::min(LMR_HIST_MAX, -hist / LMR_HIST_DIV));
+                reduction = std::clamp((int)baseRed, 1, depth - 1);
+            }
+            if (reduction > 0) {
+                doFullSearch = false;
+                move_info_t moveInfo;
+                moveInfo.from = ml[i].from;
+                moveInfo.to = ml[i].to;
+                moveInfo.alpha = -alpha - 1;
+                moveInfo.beta = -alpha;
+                moveInfo.score = score;
+                moveInfo.accPair = accPair;
+                moveInfo.key = key;
+                moveInfo.depth = depth - reduction;
+                moveInfo.irreversibleCount = irreversibleCount;
+                moveInfo.ply = 1;
+                moveInfo.isPVNode = false;
+                moveInfo.prevMove = nullptr;
+                eval = -ml[i].move(brd, moveInfo);
+                if (eval > alpha) {
+                    doFullSearch = true;
+                }
+            }
+
+            if (doFullSearch) {
+                move_info_t moveInfo;
+                moveInfo.from = ml[i].from;
+                moveInfo.to = ml[i].to;
+                moveInfo.alpha = -beta;
+                moveInfo.beta = -alpha;
+                moveInfo.score = score;
+                moveInfo.accPair = accPair;
+                moveInfo.key = key;
+                moveInfo.depth = depth - 1;
+                moveInfo.irreversibleCount = irreversibleCount;
+                moveInfo.ply = 1;
+                moveInfo.isPVNode = firstMove;
+                moveInfo.prevMove = nullptr;
+
+                if (firstMove) {
+                    eval = -ml[i].move(brd, moveInfo);
+                } else {
+                    moveInfo.alpha = -alpha - 1;
+                    moveInfo.isPVNode = false;
+                    eval = -ml[i].move(brd, moveInfo);
+
+                    if (eval > alpha && eval < beta) {
+                        moveInfo.alpha = -beta;
+                        moveInfo.isPVNode = firstMove;
+                        eval = -ml[i].move(brd, moveInfo);
+                    }
+                }
+            }
             firstMove = false;
 
             if (shouldStop.load()) {
