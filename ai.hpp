@@ -604,7 +604,6 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
     prevHash.pop_back();
     return bestEval;
 }
-
 inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
                              bool WL, bool WR, bool BL, bool BR, int depth,
                              int irreversibleCount, int &previousEval,
@@ -613,47 +612,45 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
     auto start = std::chrono::high_resolution_clock::now();
     Callback ml[217];
     int count = 0;
-
+ 
     if (0 <= MAX_SEARCH_DEPTH) {
         pvLength[0] = 0;
     }
-    
+ 
     uint64_t kingBan = 0;
-    if(WH){
+    if (WH) {
         generateKingBan<1>(brd, kingBan);
-    }
-    else{
+    } else {
         generateKingBan<0>(brd, kingBan);
     }
     bool inCheck = WH ? (brd.WKing & kingBan) != 0
-                                  : (brd.BKing & kingBan) != 0;
-
+                      : (brd.BKing & kingBan) != 0;
+ 
     AccumulatorPair* accPair = (AccumulatorPair*)malloc(sizeof(AccumulatorPair));
     nnue_init(accPair, brd);
-    int score;
-    score = nnue_evaluate(accPair, WH);
+    int score = nnue_evaluate(accPair, WH);
     uint64_t key = create_hash(brd, WH);
-    int bestEval = -100000;
+ 
+    int bestEval      = -100000;
     int bestMoveIndex = -1;
-    int alpha = -99999;
-    int beta = 99999;
-
-    bool firstMove = true;
-
+    int alpha         = -99999;
+    int beta          =  99999;
+ 
     moveGenCall<1, 0>(brd, ep, ml, count, WH, EP, WL, WR, BL, BR);
-    uint8_t fromHash = 255;
-    uint8_t toHash = 255;
+ 
+    uint8_t fromHash = 255, toHash = 255;
     if (depth != 1) {
         res val = TT.probe_hash(depth, alpha, beta, key);
         fromHash = val.from;
-        toHash = val.to;
+        toHash   = val.to;
     }
-
+ 
     MovePV expectedRootPvMove =
         (previousPvLineLength > 0) ? previousPvLine[0] : MovePV{255, 255};
+ 
     for (int i = 0; i < count; i++) {
         if (ml[i].from == expectedRootPvMove.from &&
-            ml[i].to == expectedRootPvMove.to) {
+            ml[i].to   == expectedRootPvMove.to) {
             ml[i].value += PV_MOVE_BONUS;
         }
         if (ml[i].from == fromHash && ml[i].to == toHash) {
@@ -661,267 +658,184 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
         }
         if (!ml[i].capture && !ml[i].promotion) {
             ml[i].value += getKillerMoveBonus(ml[i].from, ml[i].to, 1);
-        }
-        else{
+        } else {
             ml[i].value += captureHistory[WH][ml[i].from][ml[i].to];
         }
     }
-
+ 
     sortMoves(ml, count);
 
-    if (depth > 5) {
-        // aspiration search
-        int window = WINDOW_INIT;
-        int lo = previousEval - window, hi = previousEval + window;
-
-        bool windowFailed = true;
-        int windowIterations = 0;
-        while (windowFailed && (windowIterations < 4)) {
-            alpha = lo;
-            beta = hi;
-            firstMove = true;
-            windowIterations++;
-            windowFailed = false;
-            bestEval = -99999;
-            bestMoveIndex = -1;
-            int quietCount = 0;
-            for (int i = 0; i < count; i++) {
-                int eval;
-                bool doFullSearch = true;
-                int reduction = 0;
-                if (!ml[i].capture && !ml[i].promotion) {
-                    quietCount++;
-                }
-
-                if (!ml[i].capture && !ml[i].promotion &&
-                    depth >= LMR_DEPTH_MIN && quietCount > 1) {
-                    float baseRed = LMR_BASE + int(std::log(depth) * std::log(quietCount) / (LMR_DIV));
-                    int hist = historyTable[WH][ml[i].from][ml[i].to];
-
-                    baseRed += !firstMove;
-
-                    baseRed += (inCheck && (((brd.WKing >> ml[i].from) & 1) || ((brd.BKing >> ml[i].from) & 1)));
-                        
-                    baseRed += std::max(-LMR_HIST_MAX, std::min(LMR_HIST_MAX, -hist / LMR_HIST_DIV));
-                    reduction = std::clamp((int)baseRed, 1, depth - 1);
-                }
-
-                if (reduction > 0) {
-                    doFullSearch = false;
-                    move_info_t moveInfo;
-                    moveInfo.from = ml[i].from;
-                    moveInfo.to = ml[i].to;
-                    moveInfo.alpha = -alpha - 1;
-                    moveInfo.beta = -alpha;
-                    moveInfo.score = score;
-                    moveInfo.accPair = accPair;
-                    moveInfo.key = key;
-                    moveInfo.depth = depth - reduction;
-                    moveInfo.irreversibleCount = irreversibleCount;
-                    moveInfo.ply = 1;
-                    moveInfo.isPVNode = false;
-                    moveInfo.prevMove = nullptr;
-                    eval = -ml[i].move(brd, moveInfo);
-                    if (eval > alpha) {
-                        doFullSearch = true;
-                    }
-                }
-
-                if (doFullSearch) {
-                    move_info_t moveInfo;
-                    moveInfo.from = ml[i].from;
-                    moveInfo.to = ml[i].to;
-                    moveInfo.alpha = -beta;
-                    moveInfo.beta = -alpha;
-                    moveInfo.score = score;
-                    moveInfo.accPair = accPair;
-                    moveInfo.key = key;
-                    moveInfo.depth = depth - 1;
-                    moveInfo.irreversibleCount = irreversibleCount;
-                    moveInfo.ply = 1;
-                    moveInfo.isPVNode = firstMove;
-                    moveInfo.prevMove = nullptr;
-
-                    if (firstMove) {
-                        eval = -ml[i].move(brd, moveInfo);
-                    } else {
-                        moveInfo.alpha = -alpha - 1;
-                        moveInfo.isPVNode = false;
-                        eval = -ml[i].move(brd, moveInfo);
-
-                        if (eval > alpha && eval < beta) {
-                            moveInfo.alpha = -beta;
-                            moveInfo.isPVNode = firstMove;
-                            eval = -ml[i].move(brd, moveInfo);
-                        }
-                    }
-                }
-
-                firstMove = false;
-
-                if (eval > bestEval) {
-                    bestEval = eval;
-                    bestMoveIndex = i;
-                    alpha = eval;
-
-                    pvTable[0][0].from = ml[i].from;
-                    pvTable[0][0].to = ml[i].to;
-                    if (pvLength[1] > 0) {
-                        memcpy(&pvTable[0][1], &pvTable[1][0],
-                               pvLength[1] * sizeof(MovePV));
-                        pvLength[0] = pvLength[1] + 1;
-                    } else {
-                        pvLength[0] = 1;
-                    }
-                }
-                if (bestEval >= beta || shouldStop.load()) {
-                    break;
-                }
-            }
-
-            if (bestEval <= lo || bestEval >= hi) {
-                windowFailed = true;
-
-                if (bestEval <= alpha) {
-                    alpha = std::max(bestEval - window * 3, -99999);
-                } else {
-                    beta = std::min(bestEval + window * 3, 99999);
-                }
-
-                window *= WINDOW_MULT;
-                lo = bestEval - window;
-                hi = bestEval + window;
-            }
-        }
-    }
-    if (depth < 6) {
-        int quietCount = 0;
+    auto rootSearch = [&](int lo, int hi) -> bool {
+        alpha         = lo;
+        beta          = hi;
+        bestEval      = -99999;
+        bestMoveIndex = -1;
+        bool firstMove  = true;
+        int  quietCount = 0;
+ 
         for (int i = 0; i < count; i++) {
-            int eval;
-            bool doFullSearch = true;
-            int reduction = 0;
+            if (shouldStop.load()) return false;
+ 
             if (!ml[i].capture && !ml[i].promotion) {
                 quietCount++;
             }
-
+ 
+            int  reduction    = 0;
+            bool doFullSearch = true;
+ 
             if (!ml[i].capture && !ml[i].promotion &&
                 depth >= LMR_DEPTH_MIN && quietCount > 1) {
-                float baseRed = LMR_BASE + int(std::log(depth) * std::log(quietCount) / (LMR_DIV));
+                float baseRed = LMR_BASE +
+                    int(std::log(depth) * std::log(quietCount) / LMR_DIV);
                 int hist = historyTable[WH][ml[i].from][ml[i].to];
-
+ 
                 baseRed += !firstMove;
-
-                baseRed += (inCheck && (((brd.WKing >> ml[i].from) & 1) || ((brd.BKing >> ml[i].from) & 1)));
-                    
-                baseRed += std::max(-LMR_HIST_MAX, std::min(LMR_HIST_MAX, -hist / LMR_HIST_DIV));
+                baseRed += (inCheck && (((brd.WKing >> ml[i].from) & 1) ||
+                                        ((brd.BKing >> ml[i].from) & 1)));
+                baseRed += std::max(-LMR_HIST_MAX,
+                                    std::min(LMR_HIST_MAX, -hist / LMR_HIST_DIV));
                 reduction = std::clamp((int)baseRed, 1, depth - 1);
             }
+ 
             if (reduction > 0) {
                 doFullSearch = false;
                 move_info_t moveInfo;
-                moveInfo.from = ml[i].from;
-                moveInfo.to = ml[i].to;
-                moveInfo.alpha = -alpha - 1;
-                moveInfo.beta = -alpha;
-                moveInfo.score = score;
-                moveInfo.accPair = accPair;
-                moveInfo.key = key;
-                moveInfo.depth = depth - reduction;
+                moveInfo.from              = ml[i].from;
+                moveInfo.to                = ml[i].to;
+                moveInfo.alpha             = -alpha - 1;
+                moveInfo.beta              = -alpha;
+                moveInfo.score             = score;
+                moveInfo.accPair           = accPair;
+                moveInfo.key               = key;
+                moveInfo.depth             = depth - reduction;
                 moveInfo.irreversibleCount = irreversibleCount;
-                moveInfo.ply = 1;
-                moveInfo.isPVNode = false;
-                moveInfo.prevMove = nullptr;
-                eval = -ml[i].move(brd, moveInfo);
-                if (eval > alpha) {
+                moveInfo.ply               = 1;
+                moveInfo.isPVNode          = false;
+                moveInfo.prevMove          = nullptr;
+                int reducedEval = -ml[i].move(brd, moveInfo);
+                if (reducedEval > alpha) {
                     doFullSearch = true;
                 }
             }
-
+ 
             if (doFullSearch) {
                 move_info_t moveInfo;
-                moveInfo.from = ml[i].from;
-                moveInfo.to = ml[i].to;
-                moveInfo.alpha = -beta;
-                moveInfo.beta = -alpha;
-                moveInfo.score = score;
-                moveInfo.accPair = accPair;
-                moveInfo.key = key;
-                moveInfo.depth = depth - 1;
+                moveInfo.from              = ml[i].from;
+                moveInfo.to                = ml[i].to;
+                moveInfo.score             = score;
+                moveInfo.accPair           = accPair;
+                moveInfo.key               = key;
+                moveInfo.depth             = depth - 1;
                 moveInfo.irreversibleCount = irreversibleCount;
-                moveInfo.ply = 1;
-                moveInfo.isPVNode = firstMove;
-                moveInfo.prevMove = nullptr;
-
+                moveInfo.ply               = 1;
+                moveInfo.prevMove          = nullptr;
+ 
+                int eval;
                 if (firstMove) {
+                    moveInfo.alpha    = -beta;
+                    moveInfo.beta     = -alpha;
+                    moveInfo.isPVNode = true;
                     eval = -ml[i].move(brd, moveInfo);
                 } else {
-                    moveInfo.alpha = -alpha - 1;
+                    moveInfo.alpha    = -alpha - 1;
+                    moveInfo.beta     = -alpha;
                     moveInfo.isPVNode = false;
                     eval = -ml[i].move(brd, moveInfo);
-
+ 
                     if (eval > alpha && eval < beta) {
-                        moveInfo.alpha = -beta;
-                        moveInfo.isPVNode = firstMove;
+                        moveInfo.alpha    = -beta;
+                        moveInfo.beta     = -alpha;
+                        moveInfo.isPVNode = true;
                         eval = -ml[i].move(brd, moveInfo);
                     }
                 }
-            }
-            firstMove = false;
-
-            if (shouldStop.load()) {
-                break;
-            }
-            if (eval > bestEval) {
-                bestEval = eval;
-                bestMoveIndex = i;
-                alpha = eval;
-
-                pvTable[0][0].from = ml[i].from;
-                pvTable[0][0].to = ml[i].to;
-                if (pvLength[1] > 0) {
-                    memcpy(&pvTable[0][1], &pvTable[1][0],
-                           pvLength[1] * sizeof(MovePV));
-                    pvLength[0] = pvLength[1] + 1;
-                } else {
-                    pvLength[0] = 1;
+ 
+                if (eval > bestEval) {
+                    bestEval      = eval;
+                    bestMoveIndex = i;
+                    if (eval > alpha) {
+                        alpha = eval;
+ 
+                        pvTable[0][0].from = ml[i].from;
+                        pvTable[0][0].to   = ml[i].to;
+                        if (pvLength[1] > 0) {
+                            memcpy(&pvTable[0][1], &pvTable[1][0],
+                                   pvLength[1] * sizeof(MovePV));
+                            pvLength[0] = pvLength[1] + 1;
+                        } else {
+                            pvLength[0] = 1;
+                        }
+                    }
                 }
+ 
+                if (bestEval >= beta) break;
             }
+ 
+            firstMove = false;
         }
+        return true;
+    };
+
+    if (depth > 5) {
+        int window = WINDOW_INIT;
+        int lo = previousEval - window;
+        int hi = previousEval + window;
+ 
+        int windowIterations = 0;
+        while (windowIterations < 4) {
+            bool valid = rootSearch(lo, hi);
+            if (!valid) break;
+            windowIterations++;
+ 
+            if (bestEval > lo && bestEval < hi) break; 
+ 
+            window *= WINDOW_MULT;
+            if (bestEval <= lo) {
+                lo = bestEval - window;
+            } else {
+                hi = bestEval + window;
+            }
+            lo = std::max(lo, -99999);
+            hi = std::min(hi,  99999);
+        }
+    } else {
+        rootSearch(-99999, 99999);
     }
+ 
     if (bestMoveIndex != -1) {
-        bestFrom = ml[bestMoveIndex].from;
-        bestTo = ml[bestMoveIndex].to;
+        bestFrom     = ml[bestMoveIndex].from;
+        bestTo       = ml[bestMoveIndex].to;
         previousEval = bestEval;
     }
+ 
     free(accPair);
-    // print the stats
+ 
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration = end - start;
     int nps = ((double)node_count) / duration.count();
+ 
     if (!shouldStop.load()) {
         TT.store(depth, bestEval, 0, key, bestFrom, bestTo);
-        if(stats.print) {
-            printf("info depth %d score cp %d nodes %ld nps %d time %d", depth,
-                bestEval, node_count, nps, (int)(1000 * duration.count()));
+        if (stats.print) {
+            printf("info depth %d score cp %d nodes %ld nps %d time %d",
+                   depth, bestEval, node_count, nps,
+                   (int)(1000 * duration.count()));
             printf("\n");
         }
         stats.nodes = node_count;
-        stats.nps = nps;
-        // for(int i = 0; i < pvLength[0]; i++) {
-        //     printf("%s ", convertMoveToUCI(brd, pvTable[0][i].from,
-        //     pvTable[0][i].to).c_str());
-        // }
+        stats.nps   = nps;
     }
+ 
     count = 0;
-
-    // find the make version of the move
+ 
     moveGenCall<0, 0>(brd, ep, ml, count, WH, EP, WL, WR, BL, BR);
     for (int i = 0; i < count; i++) {
         if (ml[i].from == bestFrom && ml[i].to == bestTo) {
             return ml[i];
         }
     }
-    std::cout << "Error: Best move not found in move list!"<< bestFrom <<" " << bestTo << std::endl;
+    std::cout << "Error: Best move not found in move list! "
+              << bestFrom << " " << bestTo << std::endl;
     assert(false);
     return ml[0];
 }
