@@ -20,12 +20,12 @@ if(NOT DEFINED SIMD_LEVEL)
     )
 
     file(WRITE ${CMAKE_BINARY_DIR}/check_avx2.c
-        "#include <immintrin.h>\n"
-        "int main(void) {\n"
-        "    __m256i x = _mm256_setzero_si256();\n"
-        "    (void)x;\n"
-        "    return 0;\n"
-        "}\n"
+    "#include <immintrin.h>\n"
+    "int main(void) {\n"
+    "    __m256i a = _mm256_set1_epi32(1);\n"
+    "    __m256i b = _mm256_mullo_epi32(a, a);\n"
+    "    return _mm256_extract_epi32(b, 0);\n"
+    "}\n"
     )
     try_run(AVX2_RUN AVX2_COMPILE ${CMAKE_BINARY_DIR}
         ${CMAKE_BINARY_DIR}/check_avx2.c
