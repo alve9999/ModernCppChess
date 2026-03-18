@@ -296,9 +296,7 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
         return beta;
     }
 
-    if (depth == 0) {
-        // return -score;
-        //
+    if (depth == 0 || (!isPVNode && (score < (alpha - 507 - 312 * depth * depth)))) {
         minimax_info_t quiescenceInfo;
         quiescenceInfo.ep = ep;
         quiescenceInfo.alpha = alpha;
@@ -316,296 +314,295 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
         quiescenceInfo.to = to;
 
         return quiescence<status>(brd, quiescenceInfo);
+    }
+    prevHash.push_back(key);
+    if (irreversibleCount >= 4) {
+        if (std::count(prevHash.end() -
+                            std::min<size_t>(irreversibleCount + 1,
+                                            prevHash.size()),
+                        prevHash.end(), key) > 2) {
+            prevHash.pop_back();
+            return (status.IsWhite == white) ? -CONTEMPT_FACTOR
+                                                : CONTEMPT_FACTOR;
+        }
+    }
+
+    int hashf = 1;
+
+    MovePV expectedPvMove;
+    if (isPVNode && ply < previousPvLineLength) {
+        expectedPvMove = previousPvLine[ply];
     } else {
-        prevHash.push_back(key);
-        if (irreversibleCount >= 4) {
-            if (std::count(prevHash.end() -
-                               std::min<size_t>(irreversibleCount + 1,
-                                                prevHash.size()),
-                           prevHash.end(), key) > 2) {
-                prevHash.pop_back();
-                return (status.IsWhite == white) ? -CONTEMPT_FACTOR
-                                                 : CONTEMPT_FACTOR;
+        expectedPvMove.from = 255;
+        expectedPvMove.to = 255;
+    }
+
+    uint8_t fromHash = 255;
+    uint8_t toHash = 255;
+    if (depth > TT_PROBE_MIN_DEPTH) {
+        res val = TT.probe_hash(depth, alpha, beta, key);
+        fromHash = val.from;
+        toHash = val.to;
+        if (val.value != UNKNOWN) {
+
+            prevHash.pop_back();
+            return val.value;
+        }
+    }
+    bool ttHit = false;
+    if(fromHash != 255 && toHash != 255) {
+        ttHit = true;
+    }
+
+    bool hasSufficientMaterial = true;
+    if (status.IsWhite) {
+        hasSufficientMaterial =
+            (brd.WQueen | brd.WRook | brd.WBishop | brd.WKnight) != 0;
+    } else {
+        hasSufficientMaterial =
+            (brd.BQueen | brd.BRook | brd.BBishop | brd.BKnight) != 0;
+    }
+
+    bool prevMoveIsNull = info.prevMove != nullptr && info.prevMove->nullMove;
+
+    if (!ttHit && depth > 2 && !inCheck && !isPVNode && !isCapture && !nullMove && !prevMoveIsNull &&
+        hasSufficientMaterial) {
+        int R = NMP_BASE + depth / NMP_DEPTH_DIV + std::min(((-score) - beta) / NMP_SCORE_DIV, NMP_SCORE_MAX);
+        R = std::clamp(R, 2, depth - 1);
+        constexpr BoardState NextState =
+            BoardState(!status.IsWhite, false, status.WLC, status.WRC,
+                        status.BLC, status.BRC);
+
+        minimax_info_t nullMoveInfo;
+        nullMoveInfo.ep = ep;
+        nullMoveInfo.alpha = -beta;
+        nullMoveInfo.beta = -beta + 1;
+        nullMoveInfo.score = -score;
+        nullMoveInfo.accPair = info.accPair;
+        nullMoveInfo.key = toggle_side_to_move(key);
+        nullMoveInfo.depth = depth - R;
+        nullMoveInfo.irreversibleCount = irreversibleCount + 1;
+        nullMoveInfo.ply = ply + 1;
+        nullMoveInfo.isPVNode = false;
+        nullMoveInfo.isCapture = false;
+        nullMoveInfo.nullMove = true;
+        nullMoveInfo.prevMove = &info;
+        nullMoveInfo.from = 255;
+        nullMoveInfo.to = 255;
+        int nullMoveScore = -minimax<NextState>(brd, nullMoveInfo);
+
+        if (nullMoveScore >= beta) {
+            prevHash.pop_back();
+            return nullMoveScore;
+        }
+    }
+
+
+    Callback ml[217];
+    int count = 0;
+
+    kingBan = genMoves<status, 1, 0>(brd, ep, ml, count);
+
+    for (int i = 0; i < count; i++) {
+        if (ml[i].from == fromHash && ml[i].to == toHash) {
+            ml[i].value += TT_MOVE_BONUS;
+        }
+        if (ml[i].from == expectedPvMove.from &&
+            ml[i].to == expectedPvMove.to) {
+            ml[i].value += PV_MOVE_BONUS;
+        }
+        if (!ml[i].capture && !ml[i].promotion) {
+            ml[i].value += getKillerMoveBonus(ml[i].from, ml[i].to, ply);
+        }
+        else{
+            ml[i].value += captureHistory[status.IsWhite][ml[i].from][ml[i].to];
+        }
+        if(!ml[i].capture && info.prevMove != nullptr && !info.prevMove->nullMove) {
+            ml[i].value += getCounterHistoryBonus(status.IsWhite, info.prevMove->from, info.prevMove->to, ml[i].from, ml[i].to);
+        }
+        if(!ml[i].capture && info.prevMove != nullptr && info.prevMove->prevMove != nullptr && !info.prevMove->prevMove->nullMove) {
+            ml[i].value += getFollowUpBonus(status.IsWhite, info.prevMove->prevMove->from, info.prevMove->prevMove->to, ml[i].from, ml[i].to);
+        }
+    }
+
+    sortMoves(ml, count);
+
+    bool outOfMoves = (count == 0);
+    if (outOfMoves && inCheck) {
+        prevHash.pop_back();
+        return (-99999 + ply);
+    }
+    if (outOfMoves) {
+        prevHash.pop_back();
+        return 0;
+    }
+
+    bool futilityPruning = false;
+    int futilityMargin = 0;
+    
+    if (depth <= FP_DEPTH && !isPVNode && !inCheck && alpha > -90000 && alpha < 90000) {
+        futilityMargin = depth == 1 ? (FP_BASE) : (FP_BASE + FP_ADD * (depth - 1));
+        
+        if (-score + futilityMargin <= alpha) {
+            futilityPruning = true;
+        }
+    }
+    int maxIndex = -1;
+    int bestEval = -99999;
+    bool firstMove = true;
+
+    int extension = calculateExtension(isCapture,inCheck,isPVNode,count==1);
+    static const int LMP_TABLE[2][9] = {
+        {0, 3,  7, 12, 18, 25, 35, 48, 64},  // not improving
+        {0, 6, 12, 20, 30, 42, 56, 72, 90}
+    };
+
+    int quietCount = 0;
+    for (int i = 0; i < count; i++) {
+
+        if (futilityPruning && i > 0 && !ml[i].capture && !ml[i].promotion && !inCheck) {
+            continue;
+        }
+
+        if (!ml[i].capture && !ml[i].promotion) {
+            quietCount++;
+            if (depth <= LMP_DEPTH_MAX) {
+                int lmpLimit = LMP_TABLE[improving ? 1 : 0][depth] * LMP_SCALE / 100;
+                if (quietCount >= lmpLimit) {
+                    continue;
+                }
             }
         }
 
-        int hashf = 1;
+        int eval;
+        bool doFullSearch = true;
+        int reduction = 0;
 
-        MovePV expectedPvMove;
-        if (isPVNode && ply < previousPvLineLength) {
-            expectedPvMove = previousPvLine[ply];
-        } else {
-            expectedPvMove.from = 255;
-            expectedPvMove.to = 255;
+
+        if (!ml[i].capture && !ml[i].promotion &&
+            depth >= LMR_DEPTH_MIN && quietCount > 1) {
+            float baseRed = LMR_BASE + int(std::log(depth) * std::log(quietCount) / (LMR_DIV));
+            int hist = historyTable[status.IsWhite][ml[i].from][ml[i].to];
+
+            baseRed += !isPVNode + !improving;
+
+            baseRed += (inCheck && (((brd.WKing >> ml[i].from) & 1) || ((brd.BKing >> ml[i].from) & 1)));
+                
+            baseRed += std::max(-LMR_HIST_MAX, std::min(LMR_HIST_MAX, -hist / LMR_HIST_DIV));
+            reduction = std::clamp((int)baseRed, 1, depth - 1);
         }
 
-        uint8_t fromHash = 255;
-        uint8_t toHash = 255;
-        if (depth > TT_PROBE_MIN_DEPTH) {
-            res val = TT.probe_hash(depth, alpha, beta, key);
-            fromHash = val.from;
-            toHash = val.to;
-            if (val.value != UNKNOWN) {
-
-                prevHash.pop_back();
-                return val.value;
-            }
-        }
-        bool ttHit = false;
-        if(fromHash != 255 && toHash != 255) {
-            ttHit = true;
-        }
-
-        bool hasSufficientMaterial = true;
-        if (status.IsWhite) {
-            hasSufficientMaterial =
-                (brd.WQueen | brd.WRook | brd.WBishop | brd.WKnight) != 0;
-        } else {
-            hasSufficientMaterial =
-                (brd.BQueen | brd.BRook | brd.BBishop | brd.BKnight) != 0;
-        }
-
-        bool prevMoveIsNull = info.prevMove != nullptr && info.prevMove->nullMove;
-
-        if (!ttHit && depth > 2 && !inCheck && !isPVNode && !isCapture && !nullMove && !prevMoveIsNull &&
-            hasSufficientMaterial) {
-            int R = NMP_BASE + depth / NMP_DEPTH_DIV + std::min(((-score) - beta) / NMP_SCORE_DIV, NMP_SCORE_MAX);
-            R = std::clamp(R, 2, depth - 1);
-            constexpr BoardState NextState =
-                BoardState(!status.IsWhite, false, status.WLC, status.WRC,
-                           status.BLC, status.BRC);
-
-            minimax_info_t nullMoveInfo;
-            nullMoveInfo.ep = ep;
-            nullMoveInfo.alpha = -beta;
-            nullMoveInfo.beta = -beta + 1;
-            nullMoveInfo.score = -score;
-            nullMoveInfo.accPair = info.accPair;
-            nullMoveInfo.key = toggle_side_to_move(key);
-            nullMoveInfo.depth = depth - R;
-            nullMoveInfo.irreversibleCount = irreversibleCount + 1;
-            nullMoveInfo.ply = ply + 1;
-            nullMoveInfo.isPVNode = false;
-            nullMoveInfo.isCapture = false;
-            nullMoveInfo.nullMove = true;
-            nullMoveInfo.prevMove = &info;
-            nullMoveInfo.from = 255;
-            nullMoveInfo.to = 255;
-            int nullMoveScore = -minimax<NextState>(brd, nullMoveInfo);
-
-            if (nullMoveScore >= beta) {
-                prevHash.pop_back();
-                return nullMoveScore;
+        if (reduction > 0) {
+            doFullSearch = false;
+            move_info_t moveInfo;
+            moveInfo.from = ml[i].from;
+            moveInfo.to = ml[i].to;
+            moveInfo.alpha = -alpha - 1;
+            moveInfo.beta = -alpha;
+            moveInfo.score = -score;
+            moveInfo.accPair = info.accPair;
+            moveInfo.key = key;
+            moveInfo.depth = depth - reduction;
+            moveInfo.irreversibleCount = irreversibleCount;
+            moveInfo.ply = ply + 1;
+            moveInfo.isPVNode = false;
+            moveInfo.prevMove = &info;
+            eval = -ml[i].move(brd, moveInfo);
+            if (eval > alpha) {
+                doFullSearch = true;
             }
         }
 
+        if (doFullSearch) {
+            move_info_t moveInfo;
+            moveInfo.from = ml[i].from;
+            moveInfo.to = ml[i].to;
+            moveInfo.alpha = -beta;
+            moveInfo.beta = -alpha;
+            moveInfo.score = -score;
+            moveInfo.accPair = info.accPair;
+            moveInfo.key = key;
+            moveInfo.depth = depth - 1 + extension;
+            moveInfo.irreversibleCount = irreversibleCount;
+            moveInfo.ply = ply + 1;
+            moveInfo.isPVNode = isPVNode;
+            moveInfo.prevMove = &info;
 
-        Callback ml[217];
-        int count = 0;
+            if (firstMove) {
+                eval = -ml[i].move(brd, moveInfo);
+            } else {
+                moveInfo.alpha = -alpha - 1;
+                moveInfo.isPVNode = false;
+                eval = -ml[i].move(brd, moveInfo);
 
-        uint64_t kingBan = genMoves<status, 1, 0>(brd, ep, ml, count);
-
-        for (int i = 0; i < count; i++) {
-            if (ml[i].from == fromHash && ml[i].to == toHash) {
-                ml[i].value += TT_MOVE_BONUS;
+                if (eval > alpha && eval < beta) {
+                    moveInfo.alpha = -beta;
+                    moveInfo.isPVNode = isPVNode;
+                    eval = -ml[i].move(brd, moveInfo);
+                }
             }
-            if (ml[i].from == expectedPvMove.from &&
-                ml[i].to == expectedPvMove.to) {
-                ml[i].value += PV_MOVE_BONUS;
+        }
+
+        firstMove = false;
+
+        if(eval > bestEval){
+            bestEval = eval;
+            maxIndex = i;
+            if (eval > alpha) {
+                hashf = 0;
+                alpha = eval;
+
+                if (ply <= MAX_SEARCH_DEPTH) {
+                    pvTable[ply][0].from = ml[i].from;
+                    pvTable[ply][0].to = ml[i].to;
+                    if (ply + 1 <= MAX_SEARCH_DEPTH) {
+                        memcpy(&pvTable[ply][1], &pvTable[ply + 1][0],
+                            pvLength[ply + 1] * sizeof(MovePV));
+                        pvLength[ply] = pvLength[ply + 1] + 1;
+                    } else {
+                        pvLength[ply] = 1;
+                    }
+                }
             }
+        }
+
+        // move is to good
+        if (eval >= beta) {
             if (!ml[i].capture && !ml[i].promotion) {
-                ml[i].value += getKillerMoveBonus(ml[i].from, ml[i].to, ply);
+                updateHistory<status.IsWhite>(ml[i].from, ml[i].to, depth*depth);
+                updateKillerMoves(ply, ml[i].from, ml[i].to);
+                if(info.prevMove != nullptr && !info.prevMove->nullMove) {
+                    updateCounterHistory(status.IsWhite, info.prevMove->from, info.prevMove->to, ml[i].from, ml[i].to);
+                }
             }
             else{
-                ml[i].value += captureHistory[status.IsWhite][ml[i].from][ml[i].to];
+                updateCaptureHistory<status.IsWhite>(ml[i].from, ml[i].to, depth*depth);
             }
-            if(!ml[i].capture && info.prevMove != nullptr && !info.prevMove->nullMove) {
-                ml[i].value += getCounterHistoryBonus(status.IsWhite, info.prevMove->from, info.prevMove->to, ml[i].from, ml[i].to);
+            for (int j = 0; j < i; j++) {
+                if (!ml[j].capture && !ml[j].promotion) {
+                    updateHistory<status.IsWhite>(ml[j].from, ml[j].to,
+                                                    -depth);
+                }
             }
-            if(!ml[i].capture && info.prevMove != nullptr && info.prevMove->prevMove != nullptr && !info.prevMove->prevMove->nullMove) {
-                ml[i].value += getFollowUpBonus(status.IsWhite, info.prevMove->prevMove->from, info.prevMove->prevMove->to, ml[i].from, ml[i].to);
+            if (depth > TT_PROBE_MIN_DEPTH) {
+                TT.store(depth, beta, 2, key, ml[i].from, ml[i].to);
             }
-        }
-
-        sortMoves(ml, count);
-
-        bool outOfMoves = (count == 0);
-        if (outOfMoves && inCheck) {
             prevHash.pop_back();
-            return (-99999 + ply);
+            return bestEval;
         }
-        if (outOfMoves) {
-            prevHash.pop_back();
-            return 0;
-        }
-
-        bool futilityPruning = false;
-        int futilityMargin = 0;
         
-        if (depth <= FP_DEPTH && !isPVNode && !inCheck && alpha > -90000 && alpha < 90000) {
-            futilityMargin = depth == 1 ? (FP_BASE) : (FP_BASE + FP_ADD * (depth - 1));
-            
-            if (-score + futilityMargin <= alpha) {
-                futilityPruning = true;
-            }
-        }
-        int maxIndex = -1;
-        int bestEval = -99999;
-        bool firstMove = true;
 
-	    int extension = calculateExtension(isCapture,inCheck,isPVNode,count==1);
-        static const int LMP_TABLE[2][9] = {
-            {0, 3,  7, 12, 18, 25, 35, 48, 64},  // not improving
-            {0, 6, 12, 20, 30, 42, 56, 72, 90}
-        };
-
-        int quietCount = 0;
-        for (int i = 0; i < count; i++) {
-
-            if (futilityPruning && i > 0 && !ml[i].capture && !ml[i].promotion && !inCheck) {
-                continue;
-            }
-
-            if (!ml[i].capture && !ml[i].promotion) {
-                quietCount++;
-                if (depth <= LMP_DEPTH_MAX) {
-                    int lmpLimit = LMP_TABLE[improving ? 1 : 0][depth] * LMP_SCALE / 100;
-                    if (quietCount >= lmpLimit) {
-                        continue;
-                    }
-                }
-            }
-
-            int eval;
-            bool doFullSearch = true;
-            int reduction = 0;
-
-
-            if (!ml[i].capture && !ml[i].promotion &&
-                depth >= LMR_DEPTH_MIN && quietCount > 1) {
-                float baseRed = LMR_BASE + int(std::log(depth) * std::log(quietCount) / (LMR_DIV));
-                int hist = historyTable[status.IsWhite][ml[i].from][ml[i].to];
-
-                baseRed += !isPVNode + !improving;
-
-                baseRed += (inCheck && (((brd.WKing >> ml[i].from) & 1) || ((brd.BKing >> ml[i].from) & 1)));
-                    
-                baseRed += std::max(-LMR_HIST_MAX, std::min(LMR_HIST_MAX, -hist / LMR_HIST_DIV));
-                reduction = std::clamp((int)baseRed, 1, depth - 1);
-            }
-
-            if (reduction > 0) {
-                doFullSearch = false;
-                move_info_t moveInfo;
-                moveInfo.from = ml[i].from;
-                moveInfo.to = ml[i].to;
-                moveInfo.alpha = -alpha - 1;
-                moveInfo.beta = -alpha;
-                moveInfo.score = -score;
-                moveInfo.accPair = info.accPair;
-                moveInfo.key = key;
-                moveInfo.depth = depth - reduction;
-                moveInfo.irreversibleCount = irreversibleCount;
-                moveInfo.ply = ply + 1;
-                moveInfo.isPVNode = false;
-                moveInfo.prevMove = &info;
-                eval = -ml[i].move(brd, moveInfo);
-                if (eval > alpha) {
-                    doFullSearch = true;
-                }
-            }
-
-            if (doFullSearch) {
-                move_info_t moveInfo;
-                moveInfo.from = ml[i].from;
-                moveInfo.to = ml[i].to;
-                moveInfo.alpha = -beta;
-                moveInfo.beta = -alpha;
-                moveInfo.score = -score;
-                moveInfo.accPair = info.accPair;
-                moveInfo.key = key;
-                moveInfo.depth = depth - 1 + extension;
-                moveInfo.irreversibleCount = irreversibleCount;
-                moveInfo.ply = ply + 1;
-                moveInfo.isPVNode = isPVNode;
-                moveInfo.prevMove = &info;
-
-                if (firstMove) {
-                    eval = -ml[i].move(brd, moveInfo);
-                } else {
-                    moveInfo.alpha = -alpha - 1;
-                    moveInfo.isPVNode = false;
-                    eval = -ml[i].move(brd, moveInfo);
-
-                    if (eval > alpha && eval < beta) {
-                        moveInfo.alpha = -beta;
-                        moveInfo.isPVNode = isPVNode;
-                        eval = -ml[i].move(brd, moveInfo);
-                    }
-                }
-            }
-
-            firstMove = false;
-
-            if(eval > bestEval){
-                bestEval = eval;
-                maxIndex = i;
-                if (eval > alpha) {
-                    hashf = 0;
-                    alpha = eval;
-
-                    if (ply <= MAX_SEARCH_DEPTH) {
-                        pvTable[ply][0].from = ml[i].from;
-                        pvTable[ply][0].to = ml[i].to;
-                        if (ply + 1 <= MAX_SEARCH_DEPTH) {
-                            memcpy(&pvTable[ply][1], &pvTable[ply + 1][0],
-                                pvLength[ply + 1] * sizeof(MovePV));
-                            pvLength[ply] = pvLength[ply + 1] + 1;
-                        } else {
-                            pvLength[ply] = 1;
-                        }
-                    }
-                }
-            }
-    
-            // move is to good
-            if (eval >= beta) {
-                if (!ml[i].capture && !ml[i].promotion) {
-                    updateHistory<status.IsWhite>(ml[i].from, ml[i].to, depth*depth);
-                    updateKillerMoves(ply, ml[i].from, ml[i].to);
-                    if(info.prevMove != nullptr && !info.prevMove->nullMove) {
-                        updateCounterHistory(status.IsWhite, info.prevMove->from, info.prevMove->to, ml[i].from, ml[i].to);
-                    }
-                }
-                else{
-                    updateCaptureHistory<status.IsWhite>(ml[i].from, ml[i].to, depth*depth);
-                }
-                for (int j = 0; j < i; j++) {
-                    if (!ml[j].capture && !ml[j].promotion) {
-                        updateHistory<status.IsWhite>(ml[j].from, ml[j].to,
-                                                       -depth);
-                    }
-                }
-                if (depth > TT_PROBE_MIN_DEPTH) {
-                    TT.store(depth, beta, 2, key, ml[i].from, ml[i].to);
-                }
-                prevHash.pop_back();
-                return bestEval;
-            }
-            
-
-        }
-        if (shouldStop.load()) {
-            prevHash.pop_back();
-            return beta;
-        }
-        if (depth > 1) {
-            TT.store(depth, alpha, hashf, key, ml[maxIndex].from,
-                     ml[maxIndex].to);
-        }
-        prevHash.pop_back();
-        return bestEval;
     }
+    if (shouldStop.load()) {
+        prevHash.pop_back();
+        return beta;
+    }
+    if (depth > 1) {
+        TT.store(depth, alpha, hashf, key, ml[maxIndex].from,
+                    ml[maxIndex].to);
+    }
+    prevHash.pop_back();
+    return bestEval;
 }
 
 inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
