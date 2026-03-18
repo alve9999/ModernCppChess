@@ -7,12 +7,12 @@ include(CheckCXXCompilerFlag)
 
 if(NOT DEFINED SIMD_LEVEL)
     file(WRITE ${CMAKE_BINARY_DIR}/check_avx512.c
-        "#include <immintrin.h>\n"
-        "int main(void) {\n"
-        "    __m512i x = _mm512_setzero_si512();\n"
-        "    (void)x;\n"
-        "    return 0;\n"
-        "}\n"
+    "#include <immintrin.h>\n"
+    "int main(void) {\n"
+    "    __m512i a = _mm512_set1_epi32(1);\n"
+    "    __m512i b = _mm512_add_epi32(a, a);\n"
+    "    return _mm512_reduce_add_epi32(b);\n"
+    "}\n"
     )
     try_run(AVX512_RUN AVX512_COMPILE ${CMAKE_BINARY_DIR}
         ${CMAKE_BINARY_DIR}/check_avx512.c
