@@ -64,7 +64,7 @@ target_precompile_headers(chess2000 PRIVATE pch.h)
 
 target_compile_options(chess2000 PRIVATE
     -Wno-narrowing
-    -O3 -ggdb -gdwarf-4
+    -O3
 )
 
 if(SIMD_LEVEL STREQUAL "AVX512")
