@@ -1,27 +1,27 @@
 #pragma once
+#include "SEE.hpp"
 #include "board.hpp"
 #include "check.hpp"
 #include "constants.hpp"
 #include "eval.hpp"
 #include "hash.hpp"
+#include "minimax_info.hpp"
 #include "movegen.hpp"
+#include "nnue.h"
+#include "parameter.hpp"
 #include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <thread>
-#include "SEE.hpp"
-#include "minimax_info.hpp"
-#include "parameter.hpp"
-#include "nnue.h"
 
 extern std::atomic<bool> shouldStop;
 extern long node_count;
 
 inline long node_count = 0;
 inline std::atomic<bool> shouldStop(false);
-#define CONTEMPT_FACTOR 0
+#define CONTEMPT_FACTOR 100
 
 // --- PV Table Definitions ---
 inline const int MAX_SEARCH_DEPTH = 99;
@@ -40,7 +40,7 @@ inline int pvLength[MAX_SEARCH_DEPTH + 1];
 inline MovePV previousPvLine[MAX_SEARCH_DEPTH + 1];
 
 constexpr int MAX_KILLER_MOVES = 2;
-constexpr int MAX_KILLER_PLY = 99; 
+constexpr int MAX_KILLER_PLY = 99;
 
 static uint16_t killerMoves[MAX_KILLER_PLY][MAX_KILLER_MOVES] = {0};
 
@@ -52,12 +52,13 @@ inline uint16_t packMove(uint8_t from, uint8_t to) {
     return (static_cast<uint16_t>(from) << 8) | to;
 }
 
-inline void unpackMove(uint16_t packed, uint8_t& from, uint8_t& to) {
+inline void unpackMove(uint16_t packed, uint8_t &from, uint8_t &to) {
     from = (packed >> 8) & 0xFF;
     to = packed & 0xFF;
 }
 
-inline int getCounterHistoryBonus(bool isWhite, uint8_t prevFrom, uint8_t prevTo, uint8_t from, uint8_t to) {
+inline int getCounterHistoryBonus(bool isWhite, uint8_t prevFrom,
+                                  uint8_t prevTo, uint8_t from, uint8_t to) {
     uint16_t counterMove = counterHistoryTable[isWhite][prevFrom][prevTo];
     uint16_t move = packMove(from, to);
     if (counterMove == move) {
@@ -66,12 +67,13 @@ inline int getCounterHistoryBonus(bool isWhite, uint8_t prevFrom, uint8_t prevTo
     return 0;
 }
 
-inline void updateCounterHistory(bool isWhite, uint8_t prevFrom, uint8_t prevTo, uint8_t from, uint8_t to) {
+inline void updateCounterHistory(bool isWhite, uint8_t prevFrom, uint8_t prevTo,
+                                 uint8_t from, uint8_t to) {
     counterHistoryTable[isWhite][prevFrom][prevTo] = packMove(from, to);
 }
 
-
-inline int getFollowUpBonus(bool isWhite, uint8_t prevPrevFrom, uint8_t prevPrevTo, uint8_t from, uint8_t to) {
+inline int getFollowUpBonus(bool isWhite, uint8_t prevPrevFrom,
+                            uint8_t prevPrevTo, uint8_t from, uint8_t to) {
     uint16_t followUpMove = followUpTable[isWhite][prevPrevFrom][prevPrevTo];
     uint16_t move = packMove(from, to);
     if (followUpMove == move) {
@@ -80,33 +82,36 @@ inline int getFollowUpBonus(bool isWhite, uint8_t prevPrevFrom, uint8_t prevPrev
     return 0;
 }
 
-inline void updateFollowUp(bool isWhite, uint8_t prevPrevFrom, uint8_t prevPrevTo, uint8_t from, uint8_t to) {
+inline void updateFollowUp(bool isWhite, uint8_t prevPrevFrom,
+                           uint8_t prevPrevTo, uint8_t from, uint8_t to) {
     followUpTable[isWhite][prevPrevFrom][prevPrevTo] = packMove(from, to);
 }
 
 inline void updateKillerMoves(int ply, uint8_t from, uint8_t to) {
-    if (ply >= MAX_KILLER_PLY) return;
-    
+    if (ply >= MAX_KILLER_PLY)
+        return;
+
     uint16_t move = packMove(from, to);
-    
-    if (killerMoves[ply][0] == move) return;
-    
+
+    if (killerMoves[ply][0] == move)
+        return;
+
     killerMoves[ply][1] = killerMoves[ply][0];
     killerMoves[ply][0] = move;
 }
 
 inline int getKillerMoveBonus(uint8_t from, uint8_t to, int ply) {
     uint16_t move = packMove(from, to);
-    
-    if (move == killerMoves[ply][0]) return KILLER_MOVE_BONUS;
-    else if (move == killerMoves[ply][1]) return KILLER_MOVE_BONUS;
-    
-    return 0; 
+
+    if (move == killerMoves[ply][0])
+        return KILLER_MOVE_BONUS;
+    else if (move == killerMoves[ply][1])
+        return KILLER_MOVE_BONUS;
+
+    return 0;
 }
 
-inline void resetKillerMoves() {
-    memset(killerMoves, 0, sizeof(killerMoves));
-}
+inline void resetKillerMoves() { memset(killerMoves, 0, sizeof(killerMoves)); }
 
 inline void sortMoves(Callback *array, int count) {
     std::sort(array, array + count, [](const Callback &a, const Callback &b) {
@@ -144,8 +149,7 @@ inline void clearHistoryTable() {
 }
 
 #define MAX_HISTORY 10000
-template <bool IsWhite>
-inline void updateHistory(int from, int to, int depth) {
+template <bool IsWhite> inline void updateHistory(int from, int to, int depth) {
     int clampedBonus = clamp(depth, -MAX_HISTORY, MAX_HISTORY);
     historyTable[IsWhite][from][to] +=
         clampedBonus -
@@ -159,7 +163,6 @@ inline void updateCaptureHistory(int from, int to, int depth) {
         clampedBonus -
         captureHistory[IsWhite][from][to] * abs(clampedBonus) / MAX_HISTORY;
 }
-
 
 template <class BoardState status>
 inline int quiescence(const Board &brd, minimax_info_t &info) noexcept {
@@ -181,20 +184,19 @@ inline int quiescence(const Board &brd, minimax_info_t &info) noexcept {
                                   : (brd.BKing & kingBan) != 0;
 
     int standPat = -score;
-    if (standPat >= beta) return beta;
-    if (standPat > alpha) alpha = standPat;
-
-
+    if (standPat >= beta)
+        return beta;
+    if (standPat > alpha)
+        alpha = standPat;
 
     Callback ml[217];
     int count = 0;
 
     genMoves<status, 1, 1>(brd, ep, ml, count);
-    for(int i = 0; i < count; i++) {
+    for (int i = 0; i < count; i++) {
         ml[i].value += captureHistory[status.IsWhite][ml[i].from][ml[i].to];
     }
 
-    
     sortMoves(ml, count);
     for (int i = 0; i < count; i++) {
         if (ml[i].value < 0) {
@@ -227,17 +229,18 @@ inline int quiescence(const Board &brd, minimax_info_t &info) noexcept {
     return alpha;
 }
 
-inline int calculateExtension(bool isCapture,bool isCheck, bool isPVNode,bool isOneReplay){
-    if(isPVNode){
-    	return 0;
+inline int calculateExtension(bool isCapture, bool isCheck, bool isPVNode,
+                              bool isOneReplay) {
+    if (isPVNode) {
+        return 0;
     }
-    if(isCapture){
-    	return 0;
+    if (isCapture) {
+        return 0;
     }
-    if(isCheck){
-	    return 1;
+    if (isCheck) {
+        return 1;
     }
-    if(isOneReplay){
+    if (isOneReplay) {
         return 1;
     }
     return 0;
@@ -248,7 +251,7 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
     int ep = info.ep;
     int alpha = info.alpha;
     int beta = info.beta;
-    AccumulatorPair* accPair = info.accPair;
+    AccumulatorPair *accPair = info.accPair;
     info.score = nnue_evaluate(info.accPair, status.IsWhite);
     int score = info.score;
     uint64_t key = info.key;
@@ -261,12 +264,11 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
     int to = info.to;
     bool nullMove = info.nullMove;
     node_count++;
-    
 
     bool improving = true;
 
-    if(info.prevMove != nullptr) {
-        if(info.prevMove->prevMove != nullptr) {
+    if (info.prevMove != nullptr) {
+        if (info.prevMove->prevMove != nullptr) {
             improving = score > info.prevMove->prevMove->score;
         }
     }
@@ -281,7 +283,7 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
     // maybe (!isCapture)
     if ((!isPVNode) && (!inCheck) && (depth >= 1) && (depth <= RFP_DEPTH)) {
         int staticEval = -score;
-        int margin = RFP_MARGIN * depth /(improving ? 2 : 1);
+        int margin = RFP_MARGIN * depth / (improving ? 2 : 1);
 
         if (staticEval >= beta + margin) {
             return staticEval;
@@ -318,11 +320,11 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
         return quiescence<status>(brd, quiescenceInfo);
     } else {
         prevHash.push_back(key);
-        if (irreversibleCount >= 4) {
+        if (irreversibleCount >= 3) {
             if (std::count(prevHash.end() -
                                std::min<size_t>(irreversibleCount + 1,
                                                 prevHash.size()),
-                           prevHash.end(), key) > 2) {
+                           prevHash.end(), key) >= 2) {
                 prevHash.pop_back();
                 return (status.IsWhite == white) ? -CONTEMPT_FACTOR
                                                  : CONTEMPT_FACTOR;
@@ -352,7 +354,7 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
             }
         }
         bool ttHit = false;
-        if(fromHash != 255 && toHash != 255) {
+        if (fromHash != 255 && toHash != 255) {
             ttHit = true;
         }
 
@@ -365,11 +367,13 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
                 (brd.BQueen | brd.BRook | brd.BBishop | brd.BKnight) != 0;
         }
 
-        bool prevMoveIsNull = info.prevMove != nullptr && info.prevMove->nullMove;
+        bool prevMoveIsNull =
+            info.prevMove != nullptr && info.prevMove->nullMove;
 
-        if (!ttHit && depth > 2 && !inCheck && !isPVNode && !isCapture && !nullMove && !prevMoveIsNull &&
-            hasSufficientMaterial) {
-            int R = NMP_BASE + depth / NMP_DEPTH_DIV + std::min(((-score) - beta) / NMP_SCORE_DIV, NMP_SCORE_MAX);
+        if (!ttHit && depth > 2 && !inCheck && !isPVNode && !isCapture &&
+            !nullMove && !prevMoveIsNull && hasSufficientMaterial) {
+            int R = NMP_BASE + depth / NMP_DEPTH_DIV +
+                    std::min(((-score) - beta) / NMP_SCORE_DIV, NMP_SCORE_MAX);
             R = std::clamp(R, 2, depth - 1);
             constexpr BoardState NextState =
                 BoardState(!status.IsWhite, false, status.WLC, status.WRC,
@@ -399,7 +403,6 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
             }
         }
 
-
         Callback ml[217];
         int count = 0;
 
@@ -415,15 +418,22 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
             }
             if (!ml[i].capture && !ml[i].promotion) {
                 ml[i].value += getKillerMoveBonus(ml[i].from, ml[i].to, ply);
+            } else {
+                ml[i].value +=
+                    captureHistory[status.IsWhite][ml[i].from][ml[i].to];
             }
-            else{
-                ml[i].value += captureHistory[status.IsWhite][ml[i].from][ml[i].to];
+            if (!ml[i].capture && info.prevMove != nullptr &&
+                !info.prevMove->nullMove) {
+                ml[i].value += getCounterHistoryBonus(
+                    status.IsWhite, info.prevMove->from, info.prevMove->to,
+                    ml[i].from, ml[i].to);
             }
-            if(!ml[i].capture && info.prevMove != nullptr && !info.prevMove->nullMove) {
-                ml[i].value += getCounterHistoryBonus(status.IsWhite, info.prevMove->from, info.prevMove->to, ml[i].from, ml[i].to);
-            }
-            if(!ml[i].capture && info.prevMove != nullptr && info.prevMove->prevMove != nullptr && !info.prevMove->prevMove->nullMove) {
-                ml[i].value += getFollowUpBonus(status.IsWhite, info.prevMove->prevMove->from, info.prevMove->prevMove->to, ml[i].from, ml[i].to);
+            if (!ml[i].capture && info.prevMove != nullptr &&
+                info.prevMove->prevMove != nullptr &&
+                !info.prevMove->prevMove->nullMove) {
+                ml[i].value += getFollowUpBonus(
+                    status.IsWhite, info.prevMove->prevMove->from,
+                    info.prevMove->prevMove->to, ml[i].from, ml[i].to);
             }
         }
 
@@ -441,10 +451,12 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
 
         bool futilityPruning = false;
         int futilityMargin = 0;
-        
-        if (depth <= FP_DEPTH && !isPVNode && !inCheck && alpha > -90000 && alpha < 90000) {
-            futilityMargin = depth == 1 ? (FP_BASE) : (FP_BASE + FP_ADD * (depth - 1));
-            
+
+        if (depth <= FP_DEPTH && !isPVNode && !inCheck && alpha > -90000 &&
+            alpha < 90000) {
+            futilityMargin =
+                depth == 1 ? (FP_BASE) : (FP_BASE + FP_ADD * (depth - 1));
+
             if (-score + futilityMargin <= alpha) {
                 futilityPruning = true;
             }
@@ -453,23 +465,25 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
         int bestEval = -99999;
         bool firstMove = true;
 
-	    int extension = calculateExtension(isCapture,inCheck,isPVNode,count==1);
+        int extension =
+            calculateExtension(isCapture, inCheck, isPVNode, count == 1);
         static const int LMP_TABLE[2][9] = {
-            {0, 3,  7, 12, 18, 25, 35, 48, 64},  // not improving
-            {0, 6, 12, 20, 30, 42, 56, 72, 90}
-        };
+            {0, 3, 7, 12, 18, 25, 35, 48, 64}, // not improving
+            {0, 6, 12, 20, 30, 42, 56, 72, 90}};
 
         int quietCount = 0;
         for (int i = 0; i < count; i++) {
 
-            if (futilityPruning && i > 0 && !ml[i].capture && !ml[i].promotion && !inCheck) {
+            if (futilityPruning && i > 0 && !ml[i].capture &&
+                !ml[i].promotion && !inCheck) {
                 continue;
             }
 
             if (!ml[i].capture && !ml[i].promotion) {
                 quietCount++;
                 if (depth <= LMP_DEPTH_MAX) {
-                    int lmpLimit = LMP_TABLE[improving ? 1 : 0][depth] * LMP_SCALE / 100;
+                    int lmpLimit =
+                        LMP_TABLE[improving ? 1 : 0][depth] * LMP_SCALE / 100;
                     if (quietCount >= lmpLimit) {
                         continue;
                     }
@@ -480,17 +494,21 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
             bool doFullSearch = true;
             int reduction = 0;
 
-
-            if (!ml[i].capture && !ml[i].promotion &&
-                depth >= LMR_DEPTH_MIN && quietCount > 1) {
-                float baseRed = LMR_BASE + int(std::log(depth) * std::log(quietCount) / (LMR_DIV));
+            if (!ml[i].capture && !ml[i].promotion && depth >= LMR_DEPTH_MIN &&
+                quietCount > 1) {
+                float baseRed =
+                    LMR_BASE +
+                    int(std::log(depth) * std::log(quietCount) / (LMR_DIV));
                 int hist = historyTable[status.IsWhite][ml[i].from][ml[i].to];
 
                 baseRed += !isPVNode + !improving;
 
-                baseRed += (inCheck && (((brd.WKing >> ml[i].from) & 1) || ((brd.BKing >> ml[i].from) & 1)));
-                    
-                baseRed += std::max(-LMR_HIST_MAX, std::min(LMR_HIST_MAX, -hist / LMR_HIST_DIV));
+                baseRed += (inCheck && (((brd.WKing >> ml[i].from) & 1) ||
+                                        ((brd.BKing >> ml[i].from) & 1)));
+
+                baseRed +=
+                    std::max(-LMR_HIST_MAX,
+                             std::min(LMR_HIST_MAX, -hist / LMR_HIST_DIV));
                 reduction = std::clamp((int)baseRed, 1, depth - 1);
             }
 
@@ -547,7 +565,7 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
 
             firstMove = false;
 
-            if(eval > bestEval){
+            if (eval > bestEval) {
                 bestEval = eval;
                 maxIndex = i;
                 if (eval > alpha) {
@@ -559,7 +577,7 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
                         pvTable[ply][0].to = ml[i].to;
                         if (ply + 1 <= MAX_SEARCH_DEPTH) {
                             memcpy(&pvTable[ply][1], &pvTable[ply + 1][0],
-                                pvLength[ply + 1] * sizeof(MovePV));
+                                   pvLength[ply + 1] * sizeof(MovePV));
                             pvLength[ply] = pvLength[ply + 1] + 1;
                         } else {
                             pvLength[ply] = 1;
@@ -567,23 +585,26 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
                     }
                 }
             }
-    
+
             // move is to good
             if (eval >= beta) {
                 if (!ml[i].capture && !ml[i].promotion) {
-                    updateHistory<status.IsWhite>(ml[i].from, ml[i].to, depth*depth);
+                    updateHistory<status.IsWhite>(ml[i].from, ml[i].to,
+                                                  depth * depth);
                     updateKillerMoves(ply, ml[i].from, ml[i].to);
-                    if(info.prevMove != nullptr && !info.prevMove->nullMove) {
-                        updateCounterHistory(status.IsWhite, info.prevMove->from, info.prevMove->to, ml[i].from, ml[i].to);
+                    if (info.prevMove != nullptr && !info.prevMove->nullMove) {
+                        updateCounterHistory(
+                            status.IsWhite, info.prevMove->from,
+                            info.prevMove->to, ml[i].from, ml[i].to);
                     }
-                }
-                else{
-                    updateCaptureHistory<status.IsWhite>(ml[i].from, ml[i].to, depth*depth);
+                } else {
+                    updateCaptureHistory<status.IsWhite>(ml[i].from, ml[i].to,
+                                                         depth * depth);
                 }
                 for (int j = 0; j < i; j++) {
                     if (!ml[j].capture && !ml[j].promotion) {
                         updateHistory<status.IsWhite>(ml[j].from, ml[j].to,
-                                                       -depth);
+                                                      -depth);
                     }
                 }
                 if (depth > TT_PROBE_MIN_DEPTH) {
@@ -592,8 +613,6 @@ inline int minimax(const Board &brd, minimax_info_t &info) noexcept {
                 prevHash.pop_back();
                 return bestEval;
             }
-            
-
         }
         if (shouldStop.load()) {
             prevHash.pop_back();
@@ -620,18 +639,17 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
     if (0 <= MAX_SEARCH_DEPTH) {
         pvLength[0] = 0;
     }
-    
+
     uint64_t kingBan = 0;
-    if(WH){
+    if (WH) {
         generateKingBan<1>(brd, kingBan);
-    }
-    else{
+    } else {
         generateKingBan<0>(brd, kingBan);
     }
-    bool inCheck = WH ? (brd.WKing & kingBan) != 0
-                                  : (brd.BKing & kingBan) != 0;
+    bool inCheck = WH ? (brd.WKing & kingBan) != 0 : (brd.BKing & kingBan) != 0;
 
-    AccumulatorPair* accPair = (AccumulatorPair*)malloc(sizeof(AccumulatorPair));
+    AccumulatorPair *accPair =
+        (AccumulatorPair *)malloc(sizeof(AccumulatorPair));
     nnue_init(accPair, brd);
     int score;
     score = nnue_evaluate(accPair, WH);
@@ -664,8 +682,7 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
         }
         if (!ml[i].capture && !ml[i].promotion) {
             ml[i].value += getKillerMoveBonus(ml[i].from, ml[i].to, 1);
-        }
-        else{
+        } else {
             ml[i].value += captureHistory[WH][ml[i].from][ml[i].to];
         }
     }
@@ -698,14 +715,19 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
 
                 if (!ml[i].capture && !ml[i].promotion &&
                     depth >= LMR_DEPTH_MIN && quietCount > 1) {
-                    float baseRed = LMR_BASE + int(std::log(depth) * std::log(quietCount) / (LMR_DIV));
+                    float baseRed =
+                        LMR_BASE +
+                        int(std::log(depth) * std::log(quietCount) / (LMR_DIV));
                     int hist = historyTable[WH][ml[i].from][ml[i].to];
 
                     baseRed += !firstMove;
 
-                    baseRed += (inCheck && (((brd.WKing >> ml[i].from) & 1) || ((brd.BKing >> ml[i].from) & 1)));
-                        
-                    baseRed += std::max(-LMR_HIST_MAX, std::min(LMR_HIST_MAX, -hist / LMR_HIST_DIV));
+                    baseRed += (inCheck && (((brd.WKing >> ml[i].from) & 1) ||
+                                            ((brd.BKing >> ml[i].from) & 1)));
+
+                    baseRed +=
+                        std::max(-LMR_HIST_MAX,
+                                 std::min(LMR_HIST_MAX, -hist / LMR_HIST_DIV));
                     reduction = std::clamp((int)baseRed, 1, depth - 1);
                 }
 
@@ -807,16 +829,21 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
                 quietCount++;
             }
 
-            if (!ml[i].capture && !ml[i].promotion &&
-                depth >= LMR_DEPTH_MIN && quietCount > 1) {
-                float baseRed = LMR_BASE + int(std::log(depth) * std::log(quietCount) / (LMR_DIV));
+            if (!ml[i].capture && !ml[i].promotion && depth >= LMR_DEPTH_MIN &&
+                quietCount > 1) {
+                float baseRed =
+                    LMR_BASE +
+                    int(std::log(depth) * std::log(quietCount) / (LMR_DIV));
                 int hist = historyTable[WH][ml[i].from][ml[i].to];
 
                 baseRed += !firstMove;
 
-                baseRed += (inCheck && (((brd.WKing >> ml[i].from) & 1) || ((brd.BKing >> ml[i].from) & 1)));
-                    
-                baseRed += std::max(-LMR_HIST_MAX, std::min(LMR_HIST_MAX, -hist / LMR_HIST_DIV));
+                baseRed += (inCheck && (((brd.WKing >> ml[i].from) & 1) ||
+                                        ((brd.BKing >> ml[i].from) & 1)));
+
+                baseRed +=
+                    std::max(-LMR_HIST_MAX,
+                             std::min(LMR_HIST_MAX, -hist / LMR_HIST_DIV));
                 reduction = std::clamp((int)baseRed, 1, depth - 1);
             }
             if (reduction > 0) {
@@ -903,9 +930,9 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
     int nps = ((double)node_count) / duration.count();
     if (!shouldStop.load()) {
         TT.store(depth, bestEval, 0, key, bestFrom, bestTo);
-        if(stats.print) {
+        if (stats.print) {
             printf("info depth %d score cp %d nodes %ld nps %d time %d", depth,
-                bestEval, node_count, nps, (int)(1000 * duration.count()));
+                   bestEval, node_count, nps, (int)(1000 * duration.count()));
             printf("\n");
         }
         stats.nodes = node_count;
@@ -924,14 +951,16 @@ inline Callback findBestMove(const Board &brd, int ep, bool WH, bool EP,
             return ml[i];
         }
     }
-    std::cout << "Error: Best move not found in move list!"<< bestFrom <<" " << bestTo << std::endl;
+    std::cout << "Error: Best move not found in move list!" << bestFrom << " "
+              << bestTo << std::endl;
     assert(false);
     return ml[0];
 }
 
 inline Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP,
-                             bool WL, bool WR, bool BL, bool BR,
-                             double timeLimit, int irreversibleCount, SearchStats &stats, int max_depth) {
+                                    bool WL, bool WR, bool BL, bool BR,
+                                    double timeLimit, int irreversibleCount,
+                                    SearchStats &stats, int max_depth) {
     TT.age++;
     resetKillerMoves();
     using clock = std::chrono::high_resolution_clock;
@@ -960,8 +989,9 @@ inline Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP,
         if (shouldStop.load()) {
             break;
         }
-        bestMove = findBestMove(brd, ep, WH, EP, WL, WR, BL, BR, depth,
-                                irreversibleCount, eval, bestFrom, bestTo, stats);
+        bestMove =
+            findBestMove(brd, ep, WH, EP, WL, WR, BL, BR, depth,
+                         irreversibleCount, eval, bestFrom, bestTo, stats);
         if (0 <= MAX_SEARCH_DEPTH && pvLength[0] > 0) {
             previousPvLineLength = pvLength[0];
             memcpy(previousPvLine, &pvTable[0][0],
@@ -974,4 +1004,3 @@ inline Callback iterative_deepening(const Board &brd, int ep, bool WH, bool EP,
     timerThread.join();
     return bestMove;
 }
-
