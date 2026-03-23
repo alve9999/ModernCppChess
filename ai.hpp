@@ -21,7 +21,7 @@ extern long node_count;
 
 inline long node_count = 0;
 inline std::atomic<bool> shouldStop(false);
-#define CONTEMPT_FACTOR 100
+#define CONTEMPT_FACTOR 0
 
 // --- PV Table Definitions ---
 inline const int MAX_SEARCH_DEPTH = 99;
